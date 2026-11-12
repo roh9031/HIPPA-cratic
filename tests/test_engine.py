@@ -68,3 +68,14 @@ def test_redacted_survival_records_are_flagged_with_exclude_fix():
     _, res2 = run(w.fixes[0]["steps"])
     assert res2[-1].samples == res[-1].samples - 5
     assert not any(w.kind == "redacted" for r in res2 for w in r.warnings)
+
+
+def test_join_where_reports_missing_values():
+    steps = [PRIMARY, {"op": "join", "table": "clinical", "on": "sample_id", "how": "semi",
+                       "where": [{"column": "lab_procedure_her2_neu_in_situ_hybrid_outcome_type",
+                                  "operator": "ne", "values": ["Positive"]}]}]
+    _, res = run(steps)
+    warnings = [w for w in res[-1].warnings if w.kind == "missing_values"]
+    assert len(warnings) == 1
+    assert "lab_procedure_her2_neu_in_situ_hybrid_outcome_type" in warnings[0].message
+    assert warnings[0].examples

@@ -222,26 +222,38 @@ def run(steps: list[dict], ddir: str | None = None):
 
 
 def _filter(df, step):
-    warns = []
-    for c in step["where"]:
-        if c["column"] in df.columns and c["operator"] not in ("isnull", "notnull"):
-            missing = df[c["column"]].isna()
-            if missing.any():
-                n_s = df.loc[missing, "sample_id"].nunique()
-                warns.append(Warning_(
-                    "missing_values", "info",
-                    f"{n_s} samples were dropped because `{c['column']}` is missing for them, not because "
-                    f"they failed the condition. Decide whether that's acceptable.",
-                    examples=df.loc[missing, ["sample_id", "patient_id"]].drop_duplicates().head(10).to_dict("records"),
-                ))
+    warns = _missing_value_warnings(df, step["where"], "the current cohort")
     return df[_apply_where(df, step["where"], "the current cohort")], warns
+
+
+def _missing_value_warnings(df, where_list, where_name, cohort=None, on="sample_id"):
+    warns = []
+    for c in where_list or []:
+        if c["column"] not in df.columns or c["operator"] in ("isnull", "notnull"):
+            continue
+        missing = df[c["column"]].isna()
+        if not missing.any():
+            continue
+        affected = df.loc[missing]
+        if cohort is not None:
+            keys = affected[on].dropna().unique()
+            affected = cohort[cohort[on].isin(keys)]
+        n_s = affected["sample_id"].nunique()
+        action = "were dropped" if cohort is None else "may be affected"
+        warns.append(Warning_(
+            "missing_values", "info",
+            f"{n_s} samples {action} because `{c['column']}` is missing for them, not because "
+            f"they failed the condition. Decide whether that's acceptable.",
+            examples=affected[["sample_id", "patient_id"]].drop_duplicates().head(10).to_dict("records"),
+        ))
+    return warns
 
 
 def _join(df, step, i, steps, ddir):
     table, on, how = step["table"], step.get("on", "sample_id"), step.get("how", "inner")
     right = data.load(table, ddir)
+    warns = _missing_value_warnings(right, step.get("where"), f"table {table!r}", cohort=df, on=on)
     right = right[_apply_where(right, step.get("where"), f"table {table!r}")]
-    warns = []
     if how != "anti":
         warns += _redaction_check(df, right, table, on, step, i, steps)
 
