@@ -132,6 +132,24 @@ for r in results:
                 st.button(f"Apply fix: {fix['label']}", key=f"fix-{r.index}-{w_i}-{f_i}",
                           on_click=set_steps, args=(fix["steps"],))
 
+with st.container(border=True):
+    st.markdown("**Why isn't a sample in my cohort?** Type a sample ID to see which step removed it and why.")
+    sid = st.text_input("Sample ID", key="trace_id", placeholder="e.g. TCGA-E2-A15E-01",
+                        label_visibility="collapsed")
+    if sid.strip() and not any(r.error for r in results):
+        try:
+            from cohort_studio.sqlcheck import trace
+            t = trace(steps, sid)
+            (st.success if t["status"] == "in_cohort" else st.info)(t["why"])
+            if t["details"]:
+                st.dataframe(pd.DataFrame(t["details"]), hide_index=True)
+            st.caption("Rows for this sample after each step: " +
+                       " → ".join(str(p["rows for this sample"]) for p in t["path"]) + " (traced in SQL with DuckDB)")
+        except ImportError:
+            st.error("DuckDB isn't installed: run `pip install -r requirements.txt`.")
+        except Exception as e:
+            st.error(f"Couldn't trace that sample: {e}")
+
 # ---------------------------------------------------------------- 4. result + export
 
 st.subheader("4 · Review and export")

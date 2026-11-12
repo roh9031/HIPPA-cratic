@@ -44,6 +44,14 @@ def _lit(v) -> str:
     return "'" + str(v).replace("'", "''") + "'"
 
 
+def _is_number(v) -> bool:
+    try:
+        float(v)
+        return str(v).strip().lower() not in ("nan", "inf", "-inf", "infinity", "-infinity")
+    except ValueError:
+        return False
+
+
 def _cond_sql(c: dict, alias: str = "") -> str:
     col = f"{alias}{_q(c['column'])}"
     op = c["operator"]
@@ -57,10 +65,12 @@ def _cond_sql(c: dict, alias: str = "") -> str:
         sym = {"gt": ">", "ge": ">=", "lt": "<", "le": "<="}[op]
         return f"TRY_CAST({col} AS DOUBLE) {sym} {float(vals[0])!r}"
     lits = ", ".join(_lit(v) for v in vals)
-    if op in ("in", "eq"):
-        return f"{text} IN ({lits})"
-    if op in ("not_in", "ne"):
-        return f"{col} IS NOT NULL AND {text} NOT IN ({lits})"
+    if op in ("in", "eq", "not_in", "ne"):
+        match = f"{text} IN ({lits})"
+        nums = [repr(float(v)) for v in vals if _is_number(v)]
+        if nums:  # numbers match by value too (40 = 40.0), same as the engine
+            match = f"({match} OR TRY_CAST({text} AS DOUBLE) IN ({', '.join(nums)}))"
+        return match if op in ("in", "eq") else f"{col} IS NOT NULL AND NOT coalesce({match}, FALSE)"
     if op == "startswith":
         return "(" + " OR ".join(f"starts_with(coalesce({text}, ''), {_lit(v)})" for v in vals) + ")"
     if op == "contains":
@@ -145,3 +155,69 @@ def verify(steps: list[dict], engine_df, results, ddir: str | None = None) -> di
     return {"sql": sql, "by_step": by_step, "sql_samples": len(ids), "engine_samples": len(eng_ids),
             "only_engine": sorted(eng_ids - ids), "only_sql": sorted(ids - eng_ids),
             "match": ids == eng_ids and all(b["match"] == "✅" for b in by_step)}
+
+
+# ---------------------------------------------------------------- "Why isn't sample X in my cohort?"
+
+def trace(steps: list[dict], sample_id: str, ddir: str | None = None) -> dict:
+    """Follow one sample through the steps (in SQL) and explain the step that removed it, with the values involved."""
+    from .engine import clean_step, describe
+
+    sid = sample_id.strip().upper()
+    con = connect(ddir)
+    try:
+        con.sql("SET threads TO 1")
+        base = _ctes(steps, con)
+        counts = con.sql(base + "\n" + "\nUNION ALL ".join(
+            f"SELECT {i}, count(*) FROM s{i} WHERE sample_id = {_lit(sid)}" for i in range(len(steps) + 1))
+            + "\nORDER BY 1").fetchall()
+        path = [{"step": i, "rows for this sample": n} for i, n in counts]
+        if counts[0][1] == 0:
+            in_slides = con.sql(f"SELECT count(*) FROM slides WHERE sample_id = {_lit(sid)}").fetchall()[0][0]
+            why = f"`{sid}` isn't in sample_manifest.csv, so no cohort can include it."
+            if in_slides:
+                why += (f" It does have {in_slides} slide(s) in slide_manifest.csv: one of the samples missing from "
+                        f"the manifest (see docs/GAPS.md #19).")
+            return {"sample_id": sid, "status": "not_in_manifest", "why": why, "path": path, "details": []}
+        gone = next((i for i, n in counts if n == 0), None)
+        if gone is None:
+            return {"sample_id": sid, "status": "in_cohort", "path": path, "details": [],
+                    "why": f"`{sid}` is in the final cohort ({counts[-1][1]} row(s) in the final table)."}
+
+        s = clean_step(steps[gone - 1])
+        prev = f"s{gone - 1}"
+        why = f"`{sid}` was removed at **step {gone}: {describe(s)}**."
+        details = []
+        if s["op"] == "filter":
+            cols = ", ".join(_q(c["column"]) for c in s["where"])
+            details = _records(con, base + f"\nSELECT sample_id, {cols} FROM {prev} WHERE sample_id = {_lit(sid)}")
+            why += " Its values for the condition columns are shown below; blank means missing."
+        elif s["op"] == "collapse":
+            key = f"{s.get('level', 'sample')}_id"
+            kept = con.sql(base + f"\nSELECT sample_id FROM s{gone} WHERE {_q(key)} = "
+                                  f"(SELECT {_q(key)} FROM {prev} WHERE sample_id = {_lit(sid)} LIMIT 1)").fetchall()
+            why += f" Another sample of the same {s.get('level')} was kept instead: {', '.join(r[0] for r in kept)}."
+        else:
+            table, on, how = s["table"], s.get("on", "sample_id"), s.get("how", "inner")
+            key = con.sql(base + f"\nSELECT {_q(on)} FROM {prev} WHERE sample_id = {_lit(sid)} LIMIT 1").fetchall()[0][0]
+            cols = ["sample_id"] + [c["column"] for c in s.get("where") or [] if c["column"] != "sample_id"]
+            allrec = _records(con, f"SELECT {', '.join(_q(c) for c in dict.fromkeys(cols))} FROM {table} "
+                                   f"WHERE {_q(on)} = {_lit(key)}")
+            ok = con.sql(f"SELECT count(*) FROM {table} WHERE {_q(on)} = {_lit(key)} "
+                         f"AND {_where_sql(s.get('where'))}").fetchall()[0][0]
+            if how == "anti":
+                why += f" It has {ok} matching {table} record(s), and this step drops samples that do."
+            elif not allrec:
+                why += f" There is no {table} record for it at all (matching on {on})."
+            else:
+                why += (f" It has {len(allrec)} {table} record(s), but none meets the step's conditions. "
+                        f"They're shown below.")
+            details = allrec
+    finally:
+        con.close()
+    return {"sample_id": sid, "status": "removed", "removed_at": gone, "why": why, "path": path, "details": details}
+
+
+def _records(con, sql: str) -> list[dict]:
+    rel = con.sql(sql)
+    return [dict(zip(rel.columns, row)) for row in rel.fetchall()]
