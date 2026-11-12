@@ -17,14 +17,14 @@ def kinds(result):
 
 def test_demo_slide_join_inflates():
     df, res = run(load("demo_diagnostic_slides"))
-    assert [(r.rows, r.samples) for r in res] == [(1247, 1247), (1101, 1101), (742, 742), (776, 731)]
-    assert "inflation" in kinds(res[3])
+    assert [(r.rows, r.samples) for r in res] == [(1247, 1247), (1101, 1101), (1097, 1097), (742, 742), (776, 731)]
+    assert "inflation" in kinds(res[4])
     assert unresolved_problems(res)
 
 
 def test_semi_join_fix_resolves_inflation():
     _, res = run(load("demo_diagnostic_slides"))
-    fix = next(w for w in res[3].warnings if w.kind == "inflation").fixes[0]["steps"]
+    fix = next(w for w in res[4].warnings if w.kind == "inflation").fixes[0]["steps"]
     df, res2 = run(fix)
     assert res2[-1].rows == res2[-1].samples == 731
     assert not unresolved_problems(res2)

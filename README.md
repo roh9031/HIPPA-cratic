@@ -43,7 +43,8 @@ Request: *primary tumors with both RNA and protein data and a diagnostic slide*.
 |---|---|---|
 | All samples | 1,247 | 1,247 |
 | Primary tumor | 1,101 | 1,101 |
-| Has RNA and protein | 742 | 742 |
+| Has RNA | 1,097 | 1,097 |
+| Has protein | 742 | 742 |
 | Join diagnostic slides | **776** | 731 ← inflated: 45 samples have 2 diagnostic slides |
 | Fix: semi-join (keep if a slide exists) | 731 | 731 |
 

@@ -2,10 +2,8 @@
   "request": "Primary tumors with both RNA and protein data and a diagnostic slide",
   "steps": [
     {"op": "filter", "where": [{"column": "sample_type", "operator": "in", "values": ["Primary Tumor"]}]},
-    {"op": "filter", "where": [
-      {"column": "has_rna", "operator": "eq", "values": ["True"]},
-      {"column": "has_protein", "operator": "eq", "values": ["True"]}
-    ]},
+    {"op": "filter", "where": [{"column": "has_rna", "operator": "eq", "values": ["True"]}]},
+    {"op": "filter", "where": [{"column": "has_protein", "operator": "eq", "values": ["True"]}]},
     {"op": "join", "table": "slides", "on": "sample_id", "how": "inner",
      "where": [{"column": "slide_kind", "operator": "startswith", "values": ["diagnostic"]}]}
   ]

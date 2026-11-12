@@ -26,7 +26,7 @@ problems with one-click fixes, and exports `cohort_samples.csv` (one row per 15-
 - `app.py`: Streamlit UI. `run_cohort.py`: CLI (exit 2 = unresolved problems). `tests/`: pytest.
 
 ## Known-good numbers (demo)
-Primary tumor 1,101 → has RNA and protein 742 → join diagnostic slides = 776 rows / 731 samples (inflated)
+Primary tumor 1,101 → has RNA 1,097 → has protein 742 → join diagnostic slides = 776 rows / 731 samples (inflated)
 → semi-join fix = 731. Survival joined on patient_id: 100 extra rows plus 100 cross-sample links.
 
 ## Rules to respect

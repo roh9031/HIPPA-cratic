@@ -18,7 +18,7 @@ the organizers. The challenge repo gives only the data, the briefs, the rules an
 | Tests | ⚠️ 18 tests, including 8 DuckDB answer-key cases. Needs more traps. Known gaps: [GAPS.md](GAPS.md) |
 | README | ⚠️ missing team names, demo video and third-party licenses |
 
-Demo numbers: Primary tumor 1,101 → RNA + protein 742 → join diagnostic slides **776 rows / 731 samples**
+Demo numbers: Primary tumor 1,101 → RNA 1,097 → protein 742 → join diagnostic slides **776 rows / 731 samples**
 (inflated) → semi-join fix **731**.
 
 ## What judges do

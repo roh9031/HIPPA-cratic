@@ -41,6 +41,8 @@ Priority = how likely it is to cost us points when judges give a new request.
 | 17 | 🟠 Medium | **Same concept, several columns.** HER2 status lives in 3 columns that disagree (114 / 164 / 197 positive tumors) | `docs/TRAPS.md` #3 | The AI must name the column it picked as an assumption. Consider a column note in the UI | E |
 | 18 | 🔴 High | **No warnings for conditions inside a join.** Missing-value notes only run for `filter` steps. Conditions in a join's `where` (what the semi-join fix and the AI produce) drop samples silently | Triple-negative, ISH `ne Positive` inside a join: 18 samples, 0 warnings. Same conditions as a filter step: 4 notes (e.g. 681 dropped for blank ISH). `engine.py:243` | Run the same missing-value check on the right table's `where` in `_join` | B |
 | 19 | 🟠 Medium | **Normal samples missing from the manifest.** 24 normal samples (50 slides) appear in `slide_manifest.csv` but not in `sample_manifest.csv`. "Tumors with a matched normal" is 139 by the manifest, 163 counting slide evidence | `docs/TRAP_LOG.md`, matched-normal-with-slide trap | Decide as a team (ask organizers?). If slides count, B's patient-level matching (#2) must look at slides too | A + B |
+| 20 | 🟠 Medium (judges notice) | **No check that a filter changed the cohort's makeup.** Another team's checkpoint shows: "requiring protein data removes 355 tumors and shifts the mix of submitting sites (TVD 0.14)". We show counts only | Discord, Checkpoint 1 posts | After each step, compare the distribution of the submitting site (barcode chars 6-7, e.g. `TCGA-`**`A7`**`-...`) and other categories before vs after. Total variation distance = ½·Σ\|p−q\|. Info note above a threshold (e.g. 0.1), plus a plain-words line: "this step removed N tumors, mostly from sites X, Y". Also covers the brief's stretch goal "explain each exclusion" | unclaimed |
+| 21 | 🟠 Medium | **No "recommended" fix.** Every problem offers several fixes, and the user can't tell which is best. On the survival trap, "collapse" leaves the cross-sample problem and "semi-join" only works by luck; "join on sample_id" is the real fix | `examples/trap_patient_level_survival.json` | Engine marks one fix `recommended` (cross-sample → join on sample_id; inner-join inflation → semi-join; left-join inflation → collapse). UI shows it first with a ⭐ and a one-line why | B + D |
 
 ## How each gap gets closed
 
@@ -50,5 +52,7 @@ steps a user would build. A gap is closed when that test passes **and** the naiv
 **Done Nov 11:** #1 (left joins now offer only the collapse fix), #6 (info warning plus an "exclude redacted"
 fix; it doesn't block export because we don't yet know what the checker expects), #14 (all file reads use UTF-8).
 Each has a test.
+
+**Done Nov 12:** the exported `rebuild_cohort.py` is now tested (it reproduces the app's CSV exactly, `tests/test_rebuild.py`). The demo splits RNA (1,097) and protein (742) into separate steps so the funnel shows where tumors are lost.
 
 **Next, before the Friday feature freeze:** 2 → 3 (engine) · 4, 5 (in parallel, other roles) · the rest only if time allows.
