@@ -32,7 +32,7 @@ judges' checker does.
         │          assumptions
         ▼
  ┌──────────────────────────┐
- │  Step list (JSON)        │ ◀── user edits it (JSON box today, dropdowns soon)
+ │  Step list (JSON)        │ ◀── user edits it with dropdowns (builder.py; JSON view for power users)
  └──────┬───────────────────┘ ◀── "Apply fix" buttons replace it
         ▼
  ┌──────────────────────────┐     ┌──────────────────────────┐
@@ -62,7 +62,8 @@ testable code. The model never sees patient rows.
 | `cohort_studio/engine.py` | Validates and runs steps. After each step: counts, inflation check, cross-sample check, missing-value note, empty-result check. At the end: multi-sample-patient note. `unresolved_problems()` gates export. |
 | `cohort_studio/llm.py` | Builds a schema description (column names plus short category values), calls Claude with a strict JSON schema, returns `steps`, `assumptions` and `cannot_answer`. |
 | `cohort_studio/export.py` | One row per unique 15-char `sample_id`. Definition JSON with funnel and file hashes. A rebuild script. |
-| `app.py` | Streamlit page: 1 describe → 2 edit → 3 funnel and warnings → 4 review and export. |
+| `cohort_studio/builder.py` | The dropdown step builder: renders the step list as widgets, keyed by a per-step id so moving or deleting a step keeps everyone's values, and keeps the “Advanced: JSON” box in sync both ways. Column and value choices for a step come from the cohort *as of that step* (it runs the engine on the steps before it). Only produces the step format below. |
+| `app.py` | Streamlit page: 1 describe → 2 build → 3 funnel and warnings → 4 review and export. |
 | `run_cohort.py` | Same engine from the command line. Exit code 2 if problems remain. |
 
 ### The data's grains (the root cause of every trap)
@@ -99,9 +100,9 @@ patient (12-char barcode, TCGA-XX-XXXX)
 ## Open questions for the team
 
 1. **pandas or DuckDB in the engine?** Current choice: the engine stays on pandas (the data is small and the row-level checks are one-liners), and DuckDB is the test answer key. Possible stretch: a "show equivalent SQL" panel in the UI.
-2. **Dropdowns or a node canvas?** The brief allows either. Dropdowns are much less risky in 3 days. Proposal: dropdowns.
+2. ~~**Dropdowns or a node canvas?**~~ Decided: dropdowns (`builder.py`, Nov 12). A node canvas was judged too risky for the time left.
 3. **Which tables to add?** Mutation and protein values would let judges ask "with a TP53 mutation". Each new table needs a grain and a key in `data.TABLES`.
-4. **Inner join default:** should the UI suggest `semi` by default when a user picks a slide-grain table?
+4. **Inner join default:** a *new* join step starts at `semi`, and picking a finer-grained table with `inner`/`left` shows a caption saying the join will repeat samples. Should the UI go further and switch `how` automatically? (It doesn't, so the user's choice is never changed behind their back.)
 5. **Standalone rebuild script?** `rebuild_cohort.py` currently needs this repo installed. Is that acceptable for "a workflow someone else can rerun"?
 6. **Patient-level requests** like "tumors whose patient also has a matched normal sample": the engine can't join the sample manifest to itself, and any `patient_id` semi-join is flagged as a problem even when that's what the user wants. Judges could plausibly ask this. Proposal: add a `samples` joinable table, and flag cross-sample links only when the user didn't ask for patient-level matching.
 7. **Deploy?** Run locally for judging, or also host it (e.g. Streamlit Community Cloud) as a backup?

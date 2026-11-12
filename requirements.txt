@@ -1,5 +1,5 @@
 pandas>=2.0
-streamlit>=1.37
+streamlit>=1.67    # the step builder needs menu_button, horizontal containers, accept_new_options
 anthropic>=1.0    # optional: only for "Draft steps with AI"
 pytest
 duckdb>=1.0        # tests only: independent SQL answer key (tests/test_answer_key.py)
