@@ -35,6 +35,9 @@ Tables in the console: `samples` (one row per sample, the cohort base), `slides`
 | OS data excluding redacted records | — | ✅ |
 | **Primary tumors whose patient also has a matched normal** (worked example) | 139 | ❌ xfail, gap #2 |
 | **HER2-positive primary tumors** (IHC or ISH positive) | 197 | ❌ xfail, gap #16 (no OR). Also #17: 3 columns disagree |
+| **Triple-negative primary tumors** | 158 | ❌ xfail, gap #16. Also found #18 (no warnings in joins), confirmed #7 |
+
+Every query behind these answers is in [TRAP_LOG.md](TRAP_LOG.md).
 
 ## To do (rough priority)
 
@@ -42,7 +45,6 @@ Tables in the console: `samples` (one row per sample, the cohort base), `slides`
 |---|---|---|---|
 | 1 | Tumors **with a matched normal that has a slide** | Two hops: tumor → patient → normal sample → slides | 24 normal samples have slides but are **missing from `samples`** (50 slides). Does your answer depend on that? |
 | 2 | Primary tumors joined to slides **on patient_id** | Those 24 "orphan" normal samples' slides attach to their patient's tumor | Check the engine flags it as cross-sample, and that the fix gives your answer |
-| 4 | **Triple-negative** primary tumors (ER−, PR−, HER2−) | Three filters; missing/Indeterminate/Equivocal values | Gap #7: `ne Positive` keeps Indeterminate, `eq Negative` doesn't |
 | 5 | Primary tumors from **patients diagnosed over 50** | Age is stored as text in clinical; 5 are missing | `TRY_CAST(age_at_initial_pathologic_diagnosis AS INT) > 50` |
 | 6 | **Female** patients with a diagnostic slide | 12 male primary tumors; 4 missing gender | `gender = 'FEMALE'`. Missing gender: in or out? |
 | 7 | Tumors with **only 20x** slides / any **40x** slide | Per-slide attribute → inflation + "only" = anti logic | `slides.objective` (2,583 at 40x, 521 at 20x, 7 missing) |

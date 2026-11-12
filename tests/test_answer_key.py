@@ -173,6 +173,33 @@ CASES = [
         expected_n=197,
         gap="#16",
     ),
+    Case(
+        "triple_negative",
+        "Triple-negative primary tumors (ER-, PR-, HER2-)",
+        # Decision: ER and PR must be exactly 'Negative' (Indeterminate/blank = unknown, excluded).
+        # HER2-negative = IHC Negative and ISH not Positive, OR IHC not Positive and ISH Negative (mirror of
+        # her2_positive). Excludes 21 ER-/PR- tumors with unknown HER2. Alternatives: IHC-only = 116,
+        # "not HER2-positive" = 179 (keeps the 21 unknowns), nature2012 column = 123. See docs/TRAP_LOG.md.
+        """SELECT sample_id FROM samples
+           WHERE sample_type = 'Primary Tumor'
+             AND sample_id IN (
+               SELECT sample_id FROM clinical
+               WHERE breast_carcinoma_estrogen_receptor_status = 'Negative'
+                 AND breast_carcinoma_progesterone_receptor_status = 'Negative'
+                 AND ((lab_proc_her2_neu_immunohistochemistry_receptor_status = 'Negative'
+                       AND coalesce(lab_procedure_her2_neu_in_situ_hybrid_outcome_type, '') <> 'Positive')
+                   OR (coalesce(lab_proc_her2_neu_immunohistochemistry_receptor_status, '') <> 'Positive'
+                       AND lab_procedure_her2_neu_in_situ_hybrid_outcome_type = 'Negative')))""",
+        # Most natural engine attempt: all three = Negative. Gives 116 (misses 44, wrongly includes 2) and no
+        # warning at all, because conditions inside a join skip the missing-value check (gap #18).
+        steps=[PRIMARY, {"op": "join", "table": "clinical", "on": "sample_id", "how": "semi", "where": [
+            {"column": "breast_carcinoma_estrogen_receptor_status", "operator": "eq", "values": ["Negative"]},
+            {"column": "breast_carcinoma_progesterone_receptor_status", "operator": "eq", "values": ["Negative"]},
+            {"column": "lab_proc_her2_neu_immunohistochemistry_receptor_status", "operator": "eq", "values": ["Negative"]},
+        ]}],
+        expected_n=158,
+        gap="#16",
+    ),
 ]
 
 
