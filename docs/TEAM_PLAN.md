@@ -4,8 +4,8 @@
 
 ## Where we are (Wed, Nov 11)
 
-The core product already works end to end. It's our own code, not provided by the organizers. The challenge
-repo gives only the data, the briefs, the rules and a starter notebook.
+The core product already works end to end. It's our own code (scaffolded with Claude Code), not provided by
+the organizers. The challenge repo gives only the data, the briefs, the rules and a starter notebook.
 
 | Part | Status |
 |---|---|
@@ -25,36 +25,38 @@ Demo numbers: Primary tumor 1,101 → RNA + protein 742 → join diagnostic slid
 
 They give us **a new cohort request that inflates through a join we haven't seen**, run it live, and export
 `cohort_samples.csv`. A checker compares that file with the correct cohort. **That's the score that
-matters most**, so roles 1 and 2 below are the priority.
+matters most**, so finding and fixing traps (roles 1, 2 and 2b) is the priority.
 
-## Roles (proposed: swap names in)
+## Roles (proposed: confirm on Thursday)
 
-| # | Role | Owner | Owns | Done when |
+Everyone writes code. The submission paperwork is split up as small side tasks instead of being one person's job.
+
+| Teammate | Role | Main coding job | Side task | Done when |
 |---|---|---|---|---|
-| 1 | **Trap hunter / tests** | _name_ | Invent 8–10 requests judges might give (clinical joins, left joins, patient-level joins, normal vs tumor, frozen vs diagnostic slides). Work out the correct sample list for each **by hand in pandas**. Add each as a `Case` in **`tests/test_answer_key.py`** (correct answer as DuckDB SQL plus the engine steps; template inside) and an example in `examples/`. | Each trap is caught, and the exported CSV matches the hand-made answer |
-| 2 | **Engine** | _name_ | Fix what role 1 breaks. Add more joinable tables (mutation, protein). | All of role 1's tests pass. First known gap: patient-level "matched normal" requests (ARCHITECTURE.md, open question 6) |
-| 3 | **UI** | _name_ | Dropdown step builder (op → table → column → value). Keep JSON as an "advanced" view. | A non-coder builds the demo cohort without touching JSON |
-| 4 | **AI drafting** | _name_ | Test "Draft with AI" on 10 requests with a personal key, log results in `docs/ai_eval.md`, improve the prompt | ≥ 8/10 drafts correct or one edit away |
-| 5 | **Submission lead** | _name_ | README (names, licenses, video link), clean-clone test, Gitleaks scan, both checkpoints, demo script and video, final merge | Every box in `SUBMISSION_CHECKLIST.md` ticked |
+| **A** (proposed: roh9031) | **1 · Trap hunter** | Invent requests judges might give. Write the correct answer as **DuckDB SQL** and add each as a `Case` in `tests/test_answer_key.py` (template inside) plus an example in `examples/`. Hand failures to B and C. | Review and merge PRs into `main` (repo owner) | 10+ traps, each passing or logged in GAPS.md |
+| **B** | **2 · Engine** | Fix what A finds. First job: patient-level matching (GAPS.md #2). | Ask organizers in Discord what the checker expects for redacted survival records (GAPS.md #6) | A's tests pass |
+| **C** | **2b · Data** | Add mutation data as a joinable table so "TP53-mutated" requests work (GAPS.md #3), then protein/RNA if time allows | List third-party code and licenses in README | Gene-level mutation requests work with a test |
+| **D** | **3 · UI** | Dropdown step builder (op → table → column → value). Keep JSON as an "advanced" view. | Record the demo video | A non-coder builds the demo cohort without touching JSON |
+| **E** | **4 · AI** | Test "Draft with AI" on 10 requests with a personal key, log results in `docs/ai_eval.md`, improve the prompt in `llm.py` | README setup steps + run the Friday clean-install check | ≥ 8/10 drafts correct or one edit away |
 
-Roles 1 and 2 should pair closely. Role 3 only *produces* step JSON (format in [ARCHITECTURE.md](ARCHITECTURE.md)),
-so roles 2 and 3 won't collide.
+**Who talks to whom:** A ↔ B and C (A finds bugs, they fix them). D and E only *produce* step JSON (format in
+[ARCHITECTURE.md](ARCHITECTURE.md)), so they won't collide with the engine work.
 
 ## Timeline
 
 | When | Milestone |
 |---|---|
-| **Wed night** | Everyone: clone both repos, run `fetch.py`, `pip install -r requirements.txt`, `pytest -q`, `streamlit run app.py`. Report setup problems to role 5. Agree on roles. |
-| **Thu** | **Checkpoint 1:** post the demo funnel screenshot in Discord. Role 1 has ≥ 4 new traps written up. Role 3 has a rough builder. |
+| **Wed night** | Everyone: clone both repos, run `fetch.py`, `pip install -r requirements.txt`, `pytest -q`, `streamlit run app.py`. Post setup problems in the team chat. |
+| **Thu** | Confirm roles. **Checkpoint 1:** post the demo funnel screenshot in Discord. Work starts: A writes the first traps, B starts patient-level matching, D has a rough builder. |
 | **Fri** | **Checkpoint 2:** paired team clones our repo fresh and runs it from the README alone. We do the same for them. **Feature freeze Friday night.** |
-| **Sat AM** | Bug fixes only. Record demo video. Final merge by role 5. **2:15 PM ET freeze.** |
+| **Sat AM** | Bug fixes only. D records the demo video. A does the final merge. **2:15 PM ET freeze.** |
 
 ## How we work in git
 
-- One branch per person or feature (`git checkout -b ui-builder`). Merge to `main` in small, frequent PRs.
-- Run **`pytest -q` and `streamlit run app.py` before every merge.**
+- One branch per person or feature (`git checkout -b ui-builder`). Open a PR to `main` and A merges it.
+- Run **`pytest -q` and `streamlit run app.py` before opening a PR.**
 - **Never commit** API keys, `.env`, or raw TCGA files (data stays in the challenge repo).
-- Don't change the step JSON format without telling roles 2, 3 and 4. All three depend on it.
+- Don't change the step JSON format without telling B, D and E. All three depend on it.
 
 ## Rules checklist (from the challenge repo)
 
