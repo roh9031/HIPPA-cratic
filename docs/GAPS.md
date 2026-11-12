@@ -37,6 +37,8 @@ Priority = how likely it is to cost us points when judges give a new request.
 | 13 | 🟡 Low | `rebuild_cohort.py` needs this repo installed to run | — | Document it in README, or inline the engine | E |
 | 14 | ✅ Fixed Nov 11 | **Windows encoding.** `app.py` reads examples without `encoding="utf-8"`, so a `≥` or `—` in an example JSON would crash on Windows | Hit this while editing docs | Add `encoding="utf-8"` (one line) | B |
 | 15 | 🟡 Low | `requirements.txt` says `streamlit>=1.37`, but the app uses `width="stretch"`, which older versions don't support. 1.67 works | — | Raise the minimum version after the clean-clone test | E |
+| 16 | 🔴 High | **No OR conditions.** A step's conditions are AND-only, so "HER2-positive (IHC **or** ISH)", "ER- or PR-positive" and similar requests can't be built | HER2+ answer key = 197; best engine attempt (IHC only) = 164, missing 33. Test `her2_positive` (xfail) | Allow `"any": [...]` groups inside `where` (OR), in the engine, the AI schema and D's builder | B (+ D, E) |
+| 17 | 🟠 Medium | **Same concept, several columns.** HER2 status lives in 3 columns that disagree (114 / 164 / 197 positive tumors) | `docs/TRAPS.md` #3 | The AI must name the column it picked as an assumption. Consider a column note in the UI | E |
 
 ## How each gap gets closed
 

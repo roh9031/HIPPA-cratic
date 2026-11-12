@@ -155,6 +155,24 @@ CASES = [
         expected_n=139,
         gap="#2",
     ),
+    Case(
+        "her2_positive",
+        "HER2-positive primary tumors",
+        # Decision: HER2+ = IHC Positive OR ISH (FISH) Positive, the standard rule. ISH settles equivocal IHC.
+        # Alternatives give very different cohorts: HER2_Final_Status_nature2012 = 114 (blank for 325 tumors),
+        # IHC only = 164, IHC or ISH = 197. Whichever the judges use, the app must show which column it chose.
+        """SELECT sample_id FROM samples
+           WHERE sample_type = 'Primary Tumor'
+             AND sample_id IN (SELECT sample_id FROM clinical
+                               WHERE lab_proc_her2_neu_immunohistochemistry_receptor_status = 'Positive'
+                                  OR lab_procedure_her2_neu_in_situ_hybrid_outcome_type = 'Positive')""",
+        # Closest the engine can get: conditions are AND-only, so it can't say "IHC positive OR ISH positive".
+        steps=[PRIMARY, {"op": "join", "table": "clinical", "on": "sample_id", "how": "semi",
+                         "where": [{"column": "lab_proc_her2_neu_immunohistochemistry_receptor_status",
+                                    "operator": "eq", "values": ["Positive"]}]}],
+        expected_n=197,
+        gap="#16",
+    ),
 ]
 
 

@@ -34,6 +34,7 @@ Tables in the console: `samples` (one row per sample, the cohort base), `slides`
 | All primary tumors, left-joined to slides + collapse | 1,101 | ✅ |
 | OS data excluding redacted records | — | ✅ |
 | **Primary tumors whose patient also has a matched normal** (worked example) | 139 | ❌ xfail, gap #2 |
+| **HER2-positive primary tumors** (IHC or ISH positive) | 197 | ❌ xfail, gap #16 (no OR). Also #17: 3 columns disagree |
 
 ## To do (rough priority)
 
@@ -41,7 +42,6 @@ Tables in the console: `samples` (one row per sample, the cohort base), `slides`
 |---|---|---|---|
 | 1 | Tumors **with a matched normal that has a slide** | Two hops: tumor → patient → normal sample → slides | 24 normal samples have slides but are **missing from `samples`** (50 slides). Does your answer depend on that? |
 | 2 | Primary tumors joined to slides **on patient_id** | Those 24 "orphan" normal samples' slides attach to their patient's tumor | Check the engine flags it as cross-sample, and that the fix gives your answer |
-| 3 | **HER2-positive** primary tumors | Two HER2 columns disagree (e.g. 38 tumors: Negative in one, Positive in the other) | `HER2_Final_Status_nature2012` vs `lab_proc_her2_neu_immunohistochemistry_receptor_status`. Pick one, note why. Also a good test for E's AI |
 | 4 | **Triple-negative** primary tumors (ER−, PR−, HER2−) | Three filters; missing/Indeterminate/Equivocal values | Gap #7: `ne Positive` keeps Indeterminate, `eq Negative` doesn't |
 | 5 | Primary tumors from **patients diagnosed over 50** | Age is stored as text in clinical; 5 are missing | `TRY_CAST(age_at_initial_pathologic_diagnosis AS INT) > 50` |
 | 6 | **Female** patients with a diagnostic slide | 12 male primary tumors; 4 missing gender | `gender = 'FEMALE'`. Missing gender: in or out? |
