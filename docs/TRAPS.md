@@ -38,6 +38,8 @@ Tables in the console: `samples` (one row per sample, the cohort base), `slides`
 | **Diagnostic slides, naive patient_id join** | 1,061 | ✅ passes (engine flags it, fix is correct) |
 | **Frozen slides, naive patient_id inner join** | 1,093 | ✅ passes (inflation + 406 cross-sample rows flagged) |
 | **Tumors with a matched normal that has a slide** | 162 | ❌ xfail, gap #2. Raised #19 (24 normals missing from manifest) |
+| **All five data layers** (number quoted in the data README) | 535 | ✅ passes |
+| **All five layers + a diagnostic slide** (naive inner join: 572 rows / 531 samples) | 531 | ✅ passes (inflation flagged, semi fix correct) |
 | **Triple-negative primary tumors** | 158 | ❌ xfail, gap #16. Also found #18 (no warnings in joins), confirmed #7 |
 
 Every query behind these answers is in [TRAP_LOG.md](TRAP_LOG.md).

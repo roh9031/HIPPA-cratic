@@ -181,3 +181,41 @@ but export is blocked by the cross-sample warning (gap #2).
 
 **Findings:** gap #19. The sample manifest is missing 24 normal samples that have slides, so "has a matched normal" is
 139 by the manifest or 163 counting slide evidence. The team should decide, and possibly ask the organizers.
+
+## Trap: all five data layers, with and without a diagnostic slide (Nov 12)
+
+**Answer keys: 535 and 531** · tests `all_five_layers`, `all_five_layers_diagnostic_slide` · ✅ both pass.
+Why this one: `data/tcga-brca/README.md` in the challenge repo quotes "Primary tumors with all five data layers = 535",
+so a judge is likely to start from it and add a join.
+
+**1. All five layers.** Matches the README.
+```sql
+SELECT count(*) AS all_five FROM samples
+WHERE sample_type='Primary Tumor' AND has_survival AND has_mutation AND has_copy_number AND has_rna AND has_protein
+```
+→ **535**
+
+**2. Naive version with a diagnostic slide** (a plain JOIN, the way most people would write it):
+```sql
+SELECT count(*) AS rows_naive, count(DISTINCT s.sample_id) AS samples
+FROM samples s JOIN slides d ON d.sample_id = s.sample_id AND d.slide_kind LIKE 'diagnostic%'
+WHERE sample_type='Primary Tumor' AND has_survival AND has_mutation AND has_copy_number AND has_rna AND has_protein
+```
+| Rows (naive) | Samples (correct) |
+|---|---|
+| 572 | **531** |
+
+41 extra rows from samples with 2+ diagnostic slides; 4 of the 535 have no diagnostic slide.
+
+**3. One sample per patient?**
+```sql
+SELECT count(*) samples, count(DISTINCT patient_id) patients FROM samples
+WHERE sample_type='Primary Tumor' AND has_survival AND has_mutation AND has_copy_number AND has_rna AND has_protein
+```
+→ 535 / 535. No patient has two such tumors, so "patients" and "samples" give the same answer here. Not a trap.
+
+**4. Engine check.** Steps: primary tumor → five `has_* = True` conditions → slides semi-join on sample_id. Engine gives
+535 and 531; the naive inner join is flagged as inflation (572 rows / 531 samples) and the semi-join fix is correct.
+Verify with SQL agrees at every step.
+
+**Findings:** none. The engine handles it.

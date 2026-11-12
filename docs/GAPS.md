@@ -58,7 +58,7 @@ can verify, and one limitation they can inspect* ("this data can't answer, and h
 | 25 | 🟠 Medium | **"Can't answer, and here's why"** | The rules call this a valid winning result | When a request needs data we don't have (treatment response; mutations until #3), say so clearly instead of building something close. `llm.py` already returns `cannot_answer`: make it prominent and test it | E |
 | 26 | 🟡 Low | **Compare two versions of a cohort** (a stretch goal in the brief) | Makes a fix visible: which samples changed and why | Careless vs fixed side by side, with the sample IDs that differ | D |
 | 27 | 🟡 Low | **Makeup shift beyond site** | Beats the other team's single TVD number | Do #20 for site, PAM50 subtype, ER status and age band | unclaimed |
-| 28 | 🟠 Medium (trap) | **"All five layers" variants** | The data README quotes 535 primary tumors with all five layers; a judge may add "with a diagnostic slide" | Engine already gives 535, and with a diagnostic slide 572 rows / 531 samples, flagged as inflation. Add both as answer-key Cases | A |
+| 28 | ✅ Done Nov 12 | **"All five layers" variants** | The data README quotes 535 primary tumors with all five layers; a judge may add "with a diagnostic slide" | Engine already gives 535, and with a diagnostic slide 572 rows / 531 samples, flagged as inflation. Both are answer-key Cases and pass | A |
 
 ## How each gap gets closed
 
