@@ -15,7 +15,7 @@ repo gives only the data, the briefs, the rules and a starter notebook.
 | Streamlit UI (`app.py`) | ✅ works, but users edit **raw JSON** |
 | CLI (`run_cohort.py`), exit code 2 on unresolved problems | ✅ works |
 | AI drafting (`llm.py`) | ⚠️ never tested with a real key |
-| Tests | ⚠️ 4 tests, covering only the 2 examples |
+| Tests | ⚠️ 13 tests: the 2 examples plus 6 DuckDB answer-key cases. Needs more traps |
 | README | ⚠️ missing team names, demo video and third-party licenses |
 
 Demo numbers: Primary tumor 1,101 → RNA + protein 742 → join diagnostic slides **776 rows / 731 samples**
@@ -31,8 +31,8 @@ matters most**, so roles 1 and 2 below are the priority.
 
 | # | Role | Owner | Owns | Done when |
 |---|---|---|---|---|
-| 1 | **Trap hunter / tests** | _name_ | Invent 8–10 requests judges might give (clinical joins, left joins, patient-level joins, normal vs tumor, frozen vs diagnostic slides). Work out the correct sample list for each **by hand in pandas**. Turn each into a test plus an example in `examples/`. | Each trap is caught, and the exported CSV matches the hand-made answer |
-| 2 | **Engine** | _name_ | Fix what role 1 breaks. Add more joinable tables (mutation, protein). | All of role 1's tests pass |
+| 1 | **Trap hunter / tests** | _name_ | Invent 8–10 requests judges might give (clinical joins, left joins, patient-level joins, normal vs tumor, frozen vs diagnostic slides). Work out the correct sample list for each **by hand in pandas**. Add each as a `Case` in **`tests/test_answer_key.py`** (correct answer as DuckDB SQL plus the engine steps; template inside) and an example in `examples/`. | Each trap is caught, and the exported CSV matches the hand-made answer |
+| 2 | **Engine** | _name_ | Fix what role 1 breaks. Add more joinable tables (mutation, protein). | All of role 1's tests pass. First known gap: patient-level "matched normal" requests (ARCHITECTURE.md, open question 6) |
 | 3 | **UI** | _name_ | Dropdown step builder (op → table → column → value). Keep JSON as an "advanced" view. | A non-coder builds the demo cohort without touching JSON |
 | 4 | **AI drafting** | _name_ | Test "Draft with AI" on 10 requests with a personal key, log results in `docs/ai_eval.md`, improve the prompt | ≥ 8/10 drafts correct or one edit away |
 | 5 | **Submission lead** | _name_ | README (names, licenses, video link), clean-clone test, Gitleaks scan, both checkpoints, demo script and video, final merge | Every box in `SUBMISSION_CHECKLIST.md` ticked |

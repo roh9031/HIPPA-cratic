@@ -11,11 +11,13 @@ Edit this file when we decide.
 | Data processing | **pandas** | The tables are small (~1.2k samples, a few thousand slides), so everything fits in memory |
 | UI | **Streamlit** | A web UI in pure Python with no frontend build. The brief suggests it |
 | AI (optional) | **Anthropic Claude** (`claude-opus-5-5`), structured JSON output | Turns plain English into steps. Uses a key the user supplies, never stored |
-| Tests | **pytest** | Pins the demo numbers and trap behavior |
+| Tests | **pytest** + **DuckDB** | pytest pins the demo numbers and trap behavior. DuckDB is the **independent answer key**: each test case writes the correct cohort as plain SQL on the raw files and checks that the engine's export matches it exactly (`tests/test_answer_key.py`) |
 | Data | Frozen TCGA-BRCA release from the challenge repo | Required by the rules. Checked against `sources.csv` checksums |
 
-There's no database and no backend server. Streamlit runs the Python directly. The brief also suggests
-DuckDB, but pandas is enough at this data size (see open questions).
+There's no database and no separate backend. `streamlit run app.py` starts a local web server that runs the
+Python directly, and the frozen CSV/TSV files are read into memory. The brief suggests DuckDB. We use it where it
+adds the most, as a second, independent implementation that checks the engine's answers, the same way the
+judges' checker does.
 
 ## System design
 
@@ -96,9 +98,10 @@ patient (12-char barcode, TCGA-XX-XXXX)
 
 ## Open questions for the team
 
-1. **pandas or DuckDB?** pandas works now and the data is small. DuckDB would let us show SQL to users. Proposal: stay on pandas.
+1. **pandas or DuckDB in the engine?** Current choice: the engine stays on pandas (the data is small and the row-level checks are one-liners), and DuckDB is the test answer key. Possible stretch: a "show equivalent SQL" panel in the UI.
 2. **Dropdowns or a node canvas?** The brief allows either. Dropdowns are much less risky in 3 days. Proposal: dropdowns.
 3. **Which tables to add?** Mutation and protein values would let judges ask "with a TP53 mutation". Each new table needs a grain and a key in `data.TABLES`.
 4. **Inner join default:** should the UI suggest `semi` by default when a user picks a slide-grain table?
 5. **Standalone rebuild script?** `rebuild_cohort.py` currently needs this repo installed. Is that acceptable for "a workflow someone else can rerun"?
-6. **Deploy?** Run locally for judging, or also host it (e.g. Streamlit Community Cloud) as a backup?
+6. **Patient-level requests** like "tumors whose patient also has a matched normal sample": the engine can't join the sample manifest to itself, and any `patient_id` semi-join is flagged as a problem even when that's what the user wants. Judges could plausibly ask this. Proposal: add a `samples` joinable table, and flag cross-sample links only when the user didn't ask for patient-level matching.
+7. **Deploy?** Run locally for judging, or also host it (e.g. Streamlit Community Cloud) as a backup?
