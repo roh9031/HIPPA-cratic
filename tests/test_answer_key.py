@@ -7,33 +7,29 @@ cohort. For every case below we write the *correct* cohort as plain SQL, run str
 To add a trap: add a Case with
   - request: the plain-English ask
   - sql:     a query returning one column, sample_id, that is the right answer
+             (try it first: python scripts/sql.py)
   - steps:   the engine steps a careful user ends up with (after applying fixes)
   - naive:   (optional) the steps a careless user would write first. The engine must flag them.
+  - gap:     (optional) if the engine can't do this yet, the GAPS.md item, e.g. "#2". The test is then
+             recorded as an expected failure (xfail) instead of breaking the suite. When someone fixes the
+             engine, pytest reports XPASS and fails, so the gap gets removed and the test becomes a normal one.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 import pytest
 
-duckdb = pytest.importorskip("duckdb")
+pytest.importorskip("duckdb")
 
-from cohort_studio import data
 from cohort_studio.engine import run, unresolved_problems
 from cohort_studio.export import cohort_samples
+from cohort_studio.sqlcheck import connect
 
 
 @pytest.fixture(scope="module")
 def db():
-    d = data.data_dir().as_posix()
-    con = duckdb.connect()
-    con.sql(f"CREATE VIEW samples  AS SELECT * FROM read_csv('{d}/sample_manifest.csv')")
-    con.sql(f"CREATE VIEW slides   AS SELECT * FROM read_csv('{d}/slide_manifest.csv')")
-    con.sql(f"CREATE VIEW survival AS SELECT sample AS sample_id, _PATIENT AS patient_id, * "
-            f"FROM read_csv('{d}/raw/survival.tsv', delim='\t')")
-    # clinical.tsv's own patient_id is a 4-char suffix; the sample barcode is the real key.
-    con.sql(f"CREATE VIEW clinical AS SELECT sampleID AS sample_id, * "
-            f"FROM read_csv('{d}/raw/clinical.tsv', delim='\t', all_varchar=true)")
+    con = connect()
     yield con
     con.close()
 
@@ -56,6 +52,7 @@ class Case:
     naive: list | None = None
     expected_n: int | None = None   # pin the count once we've checked it by hand
     notes: str = ""
+    gap: str | None = None          # GAPS.md item the engine still fails on -> test is xfail
 
 
 CASES = [
@@ -144,7 +141,26 @@ CASES = [
         steps=[PRIMARY, {"op": "filter", "where": [{"column": "has_rna", "operator": "eq", "values": ["True"]}]},
                {"op": "join", "table": "slides", "on": "sample_id", "how": "anti", "where": DIAG}],
     ),
+    # ---------------------------------------------------------------- traps that still fail (xfail)
+    Case(
+        "tumor_with_matched_normal",
+        "Primary tumors whose patient also has a matched normal-tissue sample",
+        """SELECT sample_id FROM samples
+           WHERE sample_type = 'Primary Tumor'
+             AND patient_id IN (SELECT patient_id FROM samples WHERE sample_type = 'Solid Tissue Normal')""",
+        # Best the engine can do today: keep tumors whose *patient* has a normal clinical record. The sample set is
+        # right, but matching on patient_id is always flagged as a cross-sample problem, so export is blocked.
+        steps=[PRIMARY, {"op": "join", "table": "clinical", "on": "patient_id", "how": "semi",
+                         "where": [{"column": "sample_type", "operator": "eq", "values": ["Solid Tissue Normal"]}]}],
+        expected_n=139,
+        gap="#2",
+    ),
 ]
+
+
+def _param(c):
+    marks = [pytest.mark.xfail(strict=True, reason=f"known gap {c.gap} in docs/GAPS.md")] if c.gap else []
+    return pytest.param(c, id=c.name, marks=marks)
 
 
 def _engine_ids(steps):
@@ -155,7 +171,7 @@ def _engine_ids(steps):
     return set(out["sample_id"]), results
 
 
-@pytest.mark.parametrize("case", CASES, ids=[c.name for c in CASES])
+@pytest.mark.parametrize("case", [_param(c) for c in CASES])
 def test_engine_matches_sql_answer_key(db, case):
     expected = {r[0] for r in db.sql(case.sql).fetchall()}
     got, results = _engine_ids(case.steps)
