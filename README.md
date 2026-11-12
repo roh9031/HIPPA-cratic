@@ -59,6 +59,11 @@ flags both the inflation and the 100 rows that attach another sample's record (n
   draft steps using structured output. It sees only table/column names and category values, never patient
   rows. It lists its assumptions and says when the data can't answer. The user edits the draft, and every
   count comes from the engine, not the model.
+- `cohort_studio/sqlcheck.py`: **Verify with SQL.** The button in section 4 of the app translates the steps
+  into one DuckDB query (a CTE per step), runs it on the raw files without the engine, and compares rows,
+  samples and patients after every step plus the final sample IDs. The SQL can be downloaded as `cohort.sql`
+  and re-run with `python scripts/sql.py -f cohort.sql`. It confirms the steps were carried out correctly,
+  not that they match the research question.
 - `cohort_studio/export.py`: `cohort_samples.csv` (one row per 15-character `sample_id`), `cohort.json`
   (steps, funnel, input checksums) and `rebuild_cohort.py`.
 

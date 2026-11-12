@@ -148,6 +148,49 @@ st.warning("**Human review required.** A person should confirm the steps match t
            "This tool doesn't check the quality of values inside each layer, and it only joins the clinical, "
            "survival and slide tables.")
 
+def run_sql_check():
+    try:
+        from cohort_studio.sqlcheck import verify
+        ss.sql_check = (ss.steps_text, verify(steps, df, results))
+    except ImportError:
+        ss.sql_check = (ss.steps_text, {"error": "DuckDB isn't installed: run `pip install -r requirements.txt`."})
+    except Exception as e:  # show what DuckDB said rather than crash the page
+        ss.sql_check = (ss.steps_text, {"error": f"The SQL version couldn't run: {e}"})
+
+
+with st.container(border=True):
+    v1, v2 = st.columns([3, 1])
+    v1.markdown("**Independent check.** Rebuild this cohort a second way: the same steps written as one "
+                "DuckDB SQL query over the raw files, without the app's engine. Both should give the same samples.")
+    v2.button("🔎 Verify with SQL", on_click=run_sql_check, width="stretch",
+              disabled=any(r.error for r in results))
+    chk = ss.get("sql_check")
+    if chk and chk[0] == ss.steps_text:
+        v = chk[1]
+        if v.get("error"):
+            st.error(v["error"])
+        else:
+            if v["match"]:
+                st.success(f"✅ **Match.** Engine: **{v['engine_samples']:,}** samples · independent SQL: "
+                           f"**{v['sql_samples']:,}** samples. Same sample IDs, and the same rows, samples and "
+                           f"patients after every step.")
+                if problems:
+                    st.warning("Both agree on the numbers, **including the problems flagged above**. "
+                               "Apply a fix first, then verify again.")
+            else:
+                st.error(f"❌ **Mismatch.** Engine: {v['engine_samples']:,} samples · SQL: {v['sql_samples']:,}. "
+                         f"Don't use this cohort until someone finds out why.")
+                if v["only_engine"] or v["only_sql"]:
+                    st.write("Only in the engine:", v["only_engine"][:20], "Only in SQL:", v["only_sql"][:20])
+            st.dataframe(pd.DataFrame(v["by_step"]), hide_index=True)
+            st.caption("This checks that the steps were *carried out* correctly. It can't tell you whether the "
+                       "steps match your research question: that's the human review below.")
+            with st.expander("Show the SQL (copy it, or download and run `python scripts/sql.py -f cohort.sql`)"):
+                st.code(v["sql"], language="sql")
+                st.download_button("cohort.sql", v["sql"], "cohort.sql", "text/plain")
+    elif chk:
+        st.caption("The steps changed since the last check. Click **Verify with SQL** again.")
+
 if problems:
     st.error("Not ready to export:\n\n" + "\n".join(f"- {p}" for p in problems))
     ok = st.checkbox("I understand: export anyway. cohort_samples.csv will still contain each sample only once.")
