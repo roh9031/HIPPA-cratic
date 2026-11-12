@@ -16,16 +16,21 @@ rebuilds the cohort.
 Clone this repo **next to** the challenge repo (or set `ONCOSYS_DATA` to its `data/tcga-brca` folder):
 ```
 oncosyshackathon/
-├── oncosys-hackathon-challenge/   # git clone https://github.com/disleveK/oncosys-hackathon-challenge.git
-└── cohort-studio/                 # this repo
+├── oncosys-hackathon-challenge/
+└── cohort-studio/
 ```
 ```bash
-cd oncosys-hackathon-challenge && python data/tcga-brca/fetch.py && cd ..
+mkdir oncosyshackathon && cd oncosyshackathon
+git clone https://github.com/disleveK/oncosys-hackathon-challenge.git
+git clone https://github.com/roh9031/HIPPA-cratic.git cohort-studio      # note: clone into "cohort-studio"
+cd oncosys-hackathon-challenge && python data/tcga-brca/fetch.py && cd ..   # downloads ~70 MB, checks checksums
 cd cohort-studio
 python -m venv .venv
 .venv\Scripts\activate          # macOS/Linux: source .venv/bin/activate
 pip install -r requirements.txt
 ```
+Windows: keep the folder path short (e.g. `D:\oncosyshackathon`). A very deep path can make `pip install` fail on
+the long-path limit. In `cmd`, switching drives needs `cd /d D:\oncosyshackathon`.
 
 ## Run
 ```bash
@@ -36,7 +41,9 @@ python run_cohort.py --ask "ER-positive primary tumors with a diagnostic slide" 
 pytest -q                                                    # checks the demo numbers
 ```
 `run_cohort.py` exits with code 2 if the cohort still has duplicates or cross-sample links, and 3 if `--verify` finds
-the SQL version disagrees.
+the SQL version disagrees. **The demo example is the careless version on purpose**, so the command above prints
+`UNRESOLVED` and exits 2: that's the tool catching the inflated join. Its output files (`cohort_samples.csv`,
+`cohort.sql`) go in the current folder.
 
 ## The demo
 Request: *primary tumors with both RNA and protein data and a diagnostic slide*.
