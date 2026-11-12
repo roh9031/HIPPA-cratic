@@ -60,7 +60,7 @@ def check_data(ddir: str | None = None) -> dict[str, str]:
     frozen = {}
     src = d / "sources.csv"
     if src.exists():
-        frozen = {r["file"]: r["sha256"] for r in csv.DictReader(open(src))}
+        frozen = {r["file"]: r["sha256"] for r in csv.DictReader(open(src, encoding="utf-8"))}
     for rel in [BASE_FILE] + [t["file"] for t in TABLES.values()]:
         p = d / rel
         name = Path(rel).name

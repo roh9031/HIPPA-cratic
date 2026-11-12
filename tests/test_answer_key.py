@@ -114,6 +114,28 @@ CASES = [
                          "where": [{"column": "OS.time", "operator": "ge", "values": ["1825"]}]}],
     ),
     Case(
+        "left_join_slides_collapsed",
+        "All primary tumors, with slide details where a slide exists",
+        "SELECT sample_id FROM samples WHERE sample_type = 'Primary Tumor'",
+        steps=[PRIMARY, {"op": "join", "table": "slides", "on": "sample_id", "how": "left"},
+               {"op": "collapse", "level": "sample"}],
+        naive=[PRIMARY, {"op": "join", "table": "slides", "on": "sample_id", "how": "left"}],
+        expected_n=1101,
+        notes="GAPS.md #1: the semi-join fix would wrongly give 1,098 here.",
+    ),
+    Case(
+        "survival_excluding_redacted",
+        "Primary tumors with overall survival data, excluding redacted records",
+        """SELECT sample_id FROM samples
+           WHERE sample_type = 'Primary Tumor'
+             AND sample_id IN (SELECT sample_id FROM survival
+                               WHERE "OS.time" IS NOT NULL AND Redaction IS NULL)""",
+        steps=[PRIMARY, {"op": "join", "table": "survival", "on": "sample_id", "how": "semi",
+                         "where": [{"column": "OS.time", "operator": "notnull"},
+                                   {"column": "Redaction", "operator": "isnull"}]}],
+        notes="GAPS.md #6.",
+    ),
+    Case(
         "no_diagnostic_slide",
         "Primary tumors with RNA data but no diagnostic slide",
         """SELECT sample_id FROM samples

@@ -8,7 +8,7 @@ EX = Path(__file__).resolve().parents[1] / "examples"
 
 
 def load(name):
-    return json.loads((EX / f"{name}.json").read_text())["steps"]
+    return json.loads((EX / f"{name}.json").read_text(encoding="utf-8"))["steps"]
 
 
 def kinds(result):
@@ -44,3 +44,27 @@ def test_patient_level_join_flags_cross_sample_links():
 def test_unknown_column_is_reported_not_crashed():
     _, res = run([{"op": "filter", "where": [{"column": "er_status", "operator": "eq", "values": ["x"]}]}])
     assert res[-1].error and "doesn't exist" in res[-1].error
+
+
+PRIMARY = {"op": "filter", "where": [{"column": "sample_type", "operator": "in", "values": ["Primary Tumor"]}]}
+
+
+def test_left_join_inflation_offers_only_collapse_fix():
+    # A semi-join "fix" on a left join would silently drop the 3 primary tumors that have no slide.
+    _, res = run([PRIMARY, {"op": "join", "table": "slides", "on": "sample_id", "how": "left"}])
+    w = next(w for w in res[-1].warnings if w.kind == "inflation")
+    assert [f["label"] for f in w.fixes] == ["Keep the joined columns, then collapse to one row per sample"]
+    _, res2 = run(w.fixes[0]["steps"])
+    assert res2[-1].rows == res2[-1].samples == 1101
+    assert not unresolved_problems(res2)
+
+
+def test_redacted_survival_records_are_flagged_with_exclude_fix():
+    steps = [PRIMARY, {"op": "join", "table": "survival", "on": "sample_id", "how": "semi",
+                       "where": [{"column": "OS.time", "operator": "notnull"}]}]
+    _, res = run(steps)
+    w = next(w for w in res[-1].warnings if w.kind == "redacted")
+    assert w.severity == "info" and "5 samples" in w.message
+    _, res2 = run(w.fixes[0]["steps"])
+    assert res2[-1].samples == res[-1].samples - 5
+    assert not any(w.kind == "redacted" for r in res2 for w in r.warnings)

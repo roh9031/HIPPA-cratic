@@ -31,7 +31,7 @@ class StepError(ValueError):
 
 @dataclass
 class Warning_:
-    kind: str              # inflation | cross_sample | missing_values | empty | multi_sample_patients
+    kind: str              # inflation | cross_sample | missing_values | empty | multi_sample_patients | redacted
     severity: str          # "problem" (must fix or justify) | "info"
     message: str
     examples: list[dict] = field(default_factory=list)
@@ -242,6 +242,8 @@ def _join(df, step, i, steps, ddir):
     right = data.load(table, ddir)
     right = right[_apply_where(right, step.get("where"), f"table {table!r}")]
     warns = []
+    if how != "anti":
+        warns += _redaction_check(df, right, table, on, step, i, steps)
 
     if how in ("semi", "anti"):
         hit = df[on].isin(right[on])
@@ -280,6 +282,25 @@ def _join(df, step, i, steps, ddir):
     return out, warns
 
 
+def _redaction_check(df, right, table, on, step, i, steps) -> list[Warning_]:
+    """Some tables mark records as redacted but still carry values (survival.tsv: 6 rows). Say so."""
+    if "Redaction" not in right.columns:
+        return []
+    red = right[right["Redaction"].notna() & right[on].isin(df[on])]
+    if red.empty:
+        return []
+    hit = df[df[on].isin(red[on])]
+    where = list(step.get("where") or []) + [{"column": "Redaction", "operator": "isnull"}]
+    return [Warning_(
+        "redacted", "info",
+        f"{hit['sample_id'].nunique()} samples matched {table} records marked as redacted "
+        f"({', '.join(sorted(red['Redaction'].astype(str).unique()))}). Their values are still filled in, so "
+        f"they count as matches. Exclude them unless you know the redaction doesn't matter for your question.",
+        examples=hit[["sample_id", "patient_id"]].drop_duplicates().head(10).to_dict("records"),
+        fixes=[{"label": f"Exclude redacted {table} records", "steps": _with_step(steps, i, where=where)}],
+    )]
+
+
 def _inflation_check(before, after, step, i, steps) -> list[Warning_]:
     extra_before = len(before) - before["sample_id"].nunique()
     extra_after = len(after) - after["sample_id"].nunique()
@@ -289,8 +310,11 @@ def _inflation_check(before, after, step, i, steps) -> list[Warning_]:
     dup = vc[vc > 1]
     fixes = []
     if step["op"] == "join":
-        fixes.append({"label": "Keep each sample once if it has a match (semi-join)",
-                      "steps": _with_step(steps, i, how="semi")})
+        # A semi-join only keeps samples that have a match. That's the same cohort as an inner join, but for a
+        # left join it would silently drop samples with no match, so only offer it for inner joins.
+        if step.get("how", "inner") == "inner":
+            fixes.append({"label": "Keep each sample once if it has a match (semi-join)",
+                          "steps": _with_step(steps, i, how="semi")})
         fixes.append({"label": "Keep the joined columns, then collapse to one row per sample",
                       "steps": _insert_after(steps, i, {"op": "collapse", "level": "sample"})})
     return [Warning_(

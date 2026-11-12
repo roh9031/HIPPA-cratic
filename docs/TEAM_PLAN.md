@@ -15,7 +15,7 @@ repo gives only the data, the briefs, the rules and a starter notebook.
 | Streamlit UI (`app.py`) | ✅ works, but users edit **raw JSON** |
 | CLI (`run_cohort.py`), exit code 2 on unresolved problems | ✅ works |
 | AI drafting (`llm.py`) | ⚠️ never tested with a real key |
-| Tests | ⚠️ 13 tests: the 2 examples plus 6 DuckDB answer-key cases. Needs more traps |
+| Tests | ⚠️ 18 tests, including 8 DuckDB answer-key cases. Needs more traps. Known gaps: [GAPS.md](GAPS.md) |
 | README | ⚠️ missing team names, demo video and third-party licenses |
 
 Demo numbers: Primary tumor 1,101 → RNA + protein 742 → join diagnostic slides **776 rows / 731 samples**

@@ -13,7 +13,7 @@ from cohort_studio import data, engine, export
 
 st.set_page_config(page_title="Cohort Studio", layout="wide")
 
-EXAMPLES = {p.stem: json.loads(p.read_text()) for p in sorted(Path("examples").glob("*.json"))}
+EXAMPLES = {p.stem: json.loads(p.read_text(encoding="utf-8")) for p in sorted(Path("examples").glob("*.json"))}
 DEFAULT = "demo_diagnostic_slides"
 
 ss = st.session_state

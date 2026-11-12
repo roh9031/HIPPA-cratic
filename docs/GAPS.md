@@ -1,0 +1,50 @@
+# Edge cases and gaps
+
+Everything here was **tested against the real data** on Nov 11, not guessed. Update the status column as things get fixed.
+Priority = how likely it is to cost us points when judges give a new request.
+
+## Already handled ✅
+
+| Edge case | How | Tested |
+|---|---|---|
+| Slide join inflates rows (several slides per sample) | Inflation warning + semi-join / collapse fixes | ✅ |
+| Join on `patient_id` attaches another sample's record (e.g. normal tissue → tumor) | Cross-sample warning + "join on sample_id" fix | ✅ |
+| Joining the same table twice | Each join flagged separately | probe only |
+| Typo in a column name | Error with "similar columns" hint, no crash | ✅ |
+| Value case and whitespace (`positive` vs `Positive `) | Matching ignores case and trims | ✅ |
+| Samples dropped because a value is blank | Info note with examples | probe only |
+| Filter matches nothing | "Empty" warning | probe only |
+| Patients with several samples in the final cohort | Info note + "collapse to patient" fix | probe only |
+| Exporting while problems remain | Blocked unless the user ticks a box; CSV de-duplicated anyway | ✅ |
+| Wrong or edited data files | Sidebar checksum check (✅ / ⚠️ CHANGED) | manual |
+
+## Gaps found
+
+| # | Priority | Gap | Evidence | Plan | Owner |
+|---|---|---|---|---|---|
+| 1 | ✅ Fixed Nov 11 | **Wrong fix offered for a `left` join.** The "semi-join" fix silently drops samples that have no match, which changes the cohort. | Primary tumors left-joined to slides: 1,101 samples → semi fix gives **1,098** | For `left` joins offer only "collapse to one row per sample". Offer semi only for `inner` | Role 2 |
+| 2 | 🔴 High | **Patient-level requests** ("tumors whose patient also has a matched normal sample") can't be expressed, and any `patient_id` match is flagged as a problem even when intended | No way to join the sample manifest to itself; the semi-join on patient_id is blocked from export | Add a `samples` joinable table; don't flag cross-sample links when matching another sample of the same patient is the point | Role 2 |
+| 3 | 🔴 High | **Only clinical, survival and slides can be joined.** "TP53-mutated", "high ESR1 expression" and so on can't be answered | Mutation / RNA / protein / copy-number files exist in `raw/` but aren't in `data.TABLES` | Add at least gene-level mutation. Until then the AI must say `cannot_answer` | Role 2 |
+| 4 | 🔴 High | **AI drafting has never been run** with a real key | — | Run 10 requests, log them in `docs/ai_eval.md`, fix the prompt | Role 4 |
+| 5 | 🔴 High | **Non-coders must edit JSON** | — | Dropdown step builder | Role 3 |
+| 6 | ✅ Warned Nov 11 (still ask organizers) | **Redacted survival records are included silently.** 6 samples (5 primary tumors) have `Redaction = Redacted` but full OS values | e.g. `TCGA-A7-A0DC-01`, OS.time 906 | Info warning when redacted rows survive, plus an "exclude redacted" fix. Ask organizers what the checker expects | Role 2 + 5 |
+| 7 | 🟠 Medium | **Odd coded values count as real values.** `ne Negative` keeps `Indeterminate` and `[Discrepancy]` (14 such codes in clinical). They aren't blank, so no warning appears | "ER not Negative" = 810 samples vs. ER Positive only | Treat `[...]` codes as missing and warn. AI prompt should prefer positive matches (`eq Positive`) | Role 2 + 4 |
+| 8 | 🟠 Medium | **Ambiguous wording.** Does "tumors" include the 7 Metastatic samples? Does "patients" mean one sample each? | — | AI must list these as assumptions; test in Role 4's eval | Role 4 |
+| 9 | 🟡 Low | **Collapse to patient keeps whichever row comes first** in the file, with no rule like "prefer the primary tumor" | Works today only because the manifest lists tumors first | Sort by sample type (tumor first) before collapsing | Role 2 |
+| 10 | 🟡 Low | **Booleans spelled differently** (`has_rna = yes` or `1`) return 0 samples | Empty warning appears, but the fix isn't obvious | Normalise yes/1/true | Role 2 |
+| 11 | 🟡 Low | **Anti-join on `patient_id`** isn't checked for cross-sample effects | Same result as sample_id in this data (8 = 8), so harmless today | Add the same check as semi | Role 2 |
+| 12 | 🟡 Low | **Silent drops on inner joins** (4 primary tumors have no survival row). Visible in the funnel but not explained | 1,101 → 1,097 | "Explain each exclusion in plain words" (a stretch goal in the brief) | Role 3 |
+| 13 | 🟡 Low | `rebuild_cohort.py` needs this repo installed to run | — | Document it in README, or inline the engine | Role 5 |
+| 14 | ✅ Fixed Nov 11 | **Windows encoding.** `app.py` reads examples without `encoding="utf-8"`, so a `≥` or `—` in an example JSON would crash on Windows | Hit this while editing docs | Add `encoding="utf-8"` (one line) | Role 2 |
+| 15 | 🟡 Low | `requirements.txt` says `streamlit>=1.37`, but the app uses `width="stretch"`, which older versions don't support. 1.67 works | — | Raise the minimum version after the clean-clone test | Role 5 |
+
+## How each gap gets closed
+
+Every fix in Role 2's list should come with a `Case` in `tests/test_answer_key.py`: the correct answer as DuckDB SQL plus the
+steps a user would build. A gap is closed when that test passes **and** the naive version is flagged.
+
+**Done Nov 11:** #1 (left joins now offer only the collapse fix), #6 (info warning plus an "exclude redacted"
+fix; it doesn't block export because we don't yet know what the checker expects), #14 (all file reads use UTF-8).
+Each has a test.
+
+**Next, before the Friday feature freeze:** 2 → 3 (engine) · 4, 5 (in parallel, other roles) · the rest only if time allows.

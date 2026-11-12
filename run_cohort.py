@@ -30,7 +30,7 @@ def main():
         if draft.get("cannot_answer"):
             print("  CANNOT ANSWER:", draft["cannot_answer"])
     elif a.definition:
-        spec = json.load(open(a.definition))
+        spec = json.load(open(a.definition, encoding="utf-8"))
         steps = spec["steps"] if isinstance(spec, dict) else spec
         request = spec.get("request", "") if isinstance(spec, dict) else ""
     else:
