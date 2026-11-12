@@ -3,6 +3,7 @@
   python scripts/sql.py                       interactive: type SQL ending with ;   (.tables, .cols <table>, .quit)
   python scripts/sql.py "SELECT count(*) FROM samples"
   python scripts/sql.py --cols clinical receptor     columns of a table whose name contains "receptor"
+  python scripts/sql.py -f cohort.sql                run a file, e.g. the cohort.sql from the app's "Verify with SQL"
 
 Tables: samples, slides, survival, clinical. See cohort_studio/sqlcheck.py.
 """
@@ -35,6 +36,8 @@ def main():
     args = sys.argv[1:]
     if args[:1] == ["--cols"]:
         return cols(con, args[1], args[2] if len(args) > 2 else "")
+    if args[:1] == ["-f"]:
+        return show(con, Path(args[1]).read_text(encoding="utf-8").strip().rstrip(";"))
     if args:
         return show(con, " ".join(args))
     print(__doc__)

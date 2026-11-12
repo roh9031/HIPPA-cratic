@@ -31,10 +31,12 @@ pip install -r requirements.txt
 ```bash
 streamlit run app.py                                         # the app
 python run_cohort.py examples/demo_diagnostic_slides.json    # same engine from the command line
+python run_cohort.py examples/demo_diagnostic_slides.json --verify --why TCGA-E2-A15E-01   # SQL check + trace one sample
 python run_cohort.py --ask "ER-positive primary tumors with a diagnostic slide"   # AI draft, needs ANTHROPIC_API_KEY
 pytest -q                                                    # checks the demo numbers
 ```
-`run_cohort.py` exits with code 2 if the cohort still has duplicates or cross-sample links.
+`run_cohort.py` exits with code 2 if the cohort still has duplicates or cross-sample links, and 3 if `--verify` finds
+the SQL version disagrees.
 
 ## The demo
 Request: *primary tumors with both RNA and protein data and a diagnostic slide*.
@@ -59,6 +61,13 @@ flags both the inflation and the 100 rows that attach another sample's record (n
   draft steps using structured output. It sees only table/column names and category values, never patient
   rows. It lists its assumptions and says when the data can't answer. The user edits the draft, and every
   count comes from the engine, not the model.
+- `cohort_studio/sqlcheck.py`: **Verify with SQL.** The button in section 4 of the app translates the steps
+  into one DuckDB query (a CTE per step), runs it on the raw files without the engine, and compares rows,
+  samples and patients after every step plus the final sample IDs. The SQL can be downloaded as `cohort.sql`
+  and re-run with `python scripts/sql.py -f cohort.sql`. It confirms the steps were carried out correctly,
+  not that they match the research question.
+  The **Why isn't a sample in my cohort?** box traces one sample ID through the same per-step SQL and names the
+  step that removed it, with the values involved.
 - `cohort_studio/export.py`: `cohort_samples.csv` (one row per 15-character `sample_id`), `cohort.json`
   (steps, funnel, input checksums) and `rebuild_cohort.py`.
 

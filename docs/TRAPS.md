@@ -38,19 +38,29 @@ Tables in the console: `samples` (one row per sample, the cohort base), `slides`
 | **Diagnostic slides, naive patient_id join** | 1,061 | ✅ passes (engine flags it, fix is correct) |
 | **Frozen slides, naive patient_id inner join** | 1,093 | ✅ passes (inflation + 406 cross-sample rows flagged) |
 | **Tumors with a matched normal that has a slide** | 162 | ❌ xfail, gap #2. Raised #19 (24 normals missing from manifest) |
+| **All five data layers** (number quoted in the data README) | 535 | ✅ passes |
+| **All five layers + a diagnostic slide** (naive inner join: 572 rows / 531 samples) | 531 | ✅ passes (inflation flagged, semi fix correct) |
+| **Over 50** (age is text; > vs ≥) | 766 | ✅ (≥ 50 = 800) |
+| **Female** | 1,085 | ✅ (2 gender columns disagree on 1 tumor) |
+| **Died** (survival `OS = 1`) | 151 | ✅ (`vital_status` says 152: 1 tumor disagrees) |
+| **Luminal A** (`PAM50Call_RNAseq = LumA`) | 421 | ✅ (other column says 231) |
+| **40x diagnostic slide** | 920 | ✅ after fix: **the engine returned 0**, caught by Verify with SQL |
+| **Only 20x diagnostic slides** (anti-join) | 134 | ✅ |
+| **No survival record** (anti-join) | 4 | ✅ |
+| **All tumor samples** (incl. 7 metastatic) | 1,108 | ✅ (`contains tumor` gives 1,101: wording trap, gap #8) |
+| **One tumor per patient, prefer primary** | 1,101 | ✅ but only because the manifest lists primaries first (gap #9) |
 | **Triple-negative primary tumors** | 158 | ❌ xfail, gap #16. Also found #18 (no warnings in joins), confirmed #7 |
 
 Every query behind these answers is in [TRAP_LOG.md](TRAP_LOG.md).
 
-## To do (rough priority)
+## To do
 
-| # | Request a judge might give | Why it's tricky | Hints |
-|---|---|---|---|
-| 5 | Primary tumors from **patients diagnosed over 50** | Age is stored as text in clinical; 5 are missing | `TRY_CAST(age_at_initial_pathologic_diagnosis AS INT) > 50` |
-| 6 | **Female** patients with a diagnostic slide | 12 male primary tumors; 4 missing gender | `gender = 'FEMALE'`. Missing gender: in or out? |
-| 7 | Tumors with **only 20x** slides / any **40x** slide | Per-slide attribute → inflation + "only" = anti logic | `slides.objective` (2,583 at 40x, 521 at 20x, 7 missing) |
-| 8 | **Luminal A** tumors with survival and protein data | PAM50 missing for 291 samples | `PAM50Call_RNAseq` |
-| 9 | **All tumors** (primary + metastatic) with a slide | Does "tumors" include the 7 Metastatic samples? | Note the decision |
-| 10 | **One sample per patient**, patients with OS data | Collapse to patient: which sample is kept? | Gap #9. Do any patients have 2 tumor samples? |
-| 11 | Patients who **died** with a diagnostic slide | `OS = 1` in survival vs `vital_status` in clinical: do they agree? | Compare the two first |
-| 12 | Primary tumors **with no survival record** | Anti-join; 4 primary tumors | Make sure redacted rows count as "having" a record (or not, and say so) |
+The first backlog (#5–#12) is done: see the table above and `TRAP_LOG.md`. Ideas for the next batch:
+
+| Request a judge might give | Why it might be tricky |
+|---|---|
+| Tumors with a **frozen slide but no diagnostic slide** | Two slide conditions; semi + anti |
+| **Stage III or IV** tumors | `pathologic_stage` has sub-stages (IIIA, IIIB, ...) and `[Discrepancy]` codes (gap #7) |
+| **Lymph-node positive** | Several node columns; coded values |
+| Patients with **OS data but no DFI data** | Survival columns blank vs 0 |
+| **ER-positive OR PR-positive** | Needs OR (gap #16) |
