@@ -9,6 +9,9 @@ rebuilds the cohort.
 
 **Team:** _add names_ · **Demo video:** _add link_
 
+**Teammates, start here:** [docs/TEAM_PLAN.md](docs/TEAM_PLAN.md) (roles, timeline, git workflow) ·
+[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) (tech stack, system design, open questions)
+
 ## Setup
 Clone this repo **next to** the challenge repo (or set `ONCOSYS_DATA` to its `data/tcga-brca` folder):
 ```
