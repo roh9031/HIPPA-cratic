@@ -112,3 +112,72 @@ join they produce none: `engine.py:243` applies join conditions without running 
 
 **Findings:** gap #16 again (OR needed for the HER2 rule), gap #7 confirmed on a real request (21 unknowns),
 new gap #18 (no missing-value warnings for join conditions).
+
+---
+
+## Trap: slides joined on patient_id (Nov 12)
+
+**Answer keys: diagnostic 1,061 · frozen 1,093** · tests `diagnostic_slide_patient_join`, `frozen_slide_patient_join` · ✅ both pass
+
+**1. Diagnostic slides: sample match vs patient match.** Only 1 tumor differs: `TCGA-E2-A15E-01` has no diagnostic
+slide of its own, and its patient's only one belongs to the metastatic sample (`-06`).
+```sql
+WITH tum AS (SELECT sample_id, patient_id FROM samples WHERE sample_type='Primary Tumor')
+SELECT
+  count(*) FILTER (WHERE sample_id IN (SELECT sample_id FROM slides WHERE slide_kind LIKE 'diagnostic%'))  AS own_diag_slide,
+  count(*) FILTER (WHERE patient_id IN (SELECT patient_id FROM slides WHERE slide_kind LIKE 'diagnostic%')) AS patient_has_diag_slide,
+  count(*) FILTER (WHERE patient_id IN (SELECT patient_id FROM slides WHERE slide_kind LIKE 'diagnostic%')
+               AND sample_id NOT IN (SELECT sample_id FROM slides WHERE slide_kind LIKE 'diagnostic%')) AS only_via_other_sample
+FROM tum
+```
+own 1,061 · via patient 1,062 · only via another sample 1.
+
+**2. Frozen slides: same sample set, but rows leak.** A patient-level inner join gives 1,978 rows for 1,093 tumors.
+406 rows are another sample's slide (mostly the normal's), so slide columns such as the viewer link are wrong there.
+```sql
+SELECT count(*) AS joined_rows, count(DISTINCT t.sample_id) AS distinct_tumors,
+       count(*) FILTER (WHERE s.sample_id <> t.sample_id) AS rows_from_other_sample
+FROM samples t JOIN slides s USING (patient_id)
+WHERE t.sample_type='Primary Tumor' AND s.slide_kind LIKE 'frozen%'
+```
+
+**3. Engine check** (Python: run the naive steps, then click the first fix of each problem until none are left):
+
+| Naive version | Engine flags | Fix clicked | Result |
+|---|---|---|---|
+| diagnostic, semi-join on patient_id | cross_sample (1 sample) | Match on sample_id | 1,061 ✅ |
+| frozen, inner join on patient_id | inflation (1,978 rows / 1,093) + cross_sample (406 rows) | semi-join | 1,093 ✅ |
+
+**Findings:** the engine handles these correctly. The tests now protect that behavior.
+
+---
+
+## Trap: tumors whose patient has a matched normal sample with a slide (Nov 12)
+
+**Answer key: 162** · test `tumor_with_normal_slide` · ❌ xfail, gap #2 (patient-level match always flagged). Raises gap #19.
+
+**1. Two hops plus orphans.** 24 normal samples have slides but are missing from `sample_manifest.csv`.
+```sql
+WITH tum AS (SELECT sample_id, patient_id FROM samples WHERE sample_type='Primary Tumor')
+SELECT
+  count(*) FILTER (WHERE patient_id IN (SELECT patient_id FROM samples WHERE sample_type='Solid Tissue Normal'))   AS has_normal_in_manifest,
+  count(*) FILTER (WHERE patient_id IN (SELECT s.patient_id FROM slides s JOIN samples m USING (sample_id)
+                                          WHERE m.sample_type='Solid Tissue Normal'))                          AS A_normal_in_manifest_with_slide,
+  count(*) FILTER (WHERE patient_id IN (SELECT patient_id FROM slides WHERE substr(sample_id, 14, 2) = '11'))  AS B_any_normal_slide_incl_orphans,
+  count(*) FILTER (WHERE patient_id IN (SELECT patient_id FROM slides WHERE substr(sample_id, 14, 2) = '11'
+                                          AND sample_id NOT IN (SELECT sample_id FROM samples))
+                     AND patient_id NOT IN (SELECT patient_id FROM samples WHERE sample_type='Solid Tissue Normal')) AS only_via_orphans
+FROM tum
+```
+| Normal in manifest | A: manifest normal with a slide | **B: any normal slide (incl. orphans)** | Only via orphans |
+|---|---|---|---|
+| 139 | 138 | **162** | 24 |
+
+**Decision:** B. The request is about slides, and the slide manifest is the authority on slides. A slide with a `-11`
+barcode proves the normal sample exists.
+
+**2. Engine check.** A `patient_id` semi-join on slides with `sample_id contains -11` finds exactly the right 162,
+but export is blocked by the cross-sample warning (gap #2).
+
+**Findings:** gap #19. The sample manifest is missing 24 normal samples that have slides, so "has a matched normal" is
+139 by the manifest or 163 counting slide evidence. The team should decide, and possibly ask the organizers.

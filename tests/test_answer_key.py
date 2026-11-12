@@ -141,7 +141,46 @@ CASES = [
         steps=[PRIMARY, {"op": "filter", "where": [{"column": "has_rna", "operator": "eq", "values": ["True"]}]},
                {"op": "join", "table": "slides", "on": "sample_id", "how": "anti", "where": DIAG}],
     ),
+    Case(
+        "diagnostic_slide_patient_join",
+        "Primary tumors with a diagnostic slide (naive: matched on patient_id)",
+        """SELECT sample_id FROM samples
+           WHERE sample_type = 'Primary Tumor'
+             AND sample_id IN (SELECT sample_id FROM slides WHERE slide_kind LIKE 'diagnostic%')""",
+        steps=[PRIMARY, {"op": "join", "table": "slides", "on": "sample_id", "how": "semi", "where": DIAG}],
+        # Matching on patient_id wrongly keeps TCGA-E2-A15E-01: its only diagnostic slide is from the
+        # patient's metastatic sample (-06). Engine flags it; the fix gives the answer.
+        naive=[PRIMARY, {"op": "join", "table": "slides", "on": "patient_id", "how": "semi", "where": DIAG}],
+        expected_n=1061,
+    ),
+    Case(
+        "frozen_slide_patient_join",
+        "Primary tumors with frozen-section slide details (naive: inner join on patient_id)",
+        """SELECT sample_id FROM samples
+           WHERE sample_type = 'Primary Tumor'
+             AND sample_id IN (SELECT sample_id FROM slides WHERE slide_kind LIKE 'frozen%')""",
+        steps=[PRIMARY, {"op": "join", "table": "slides", "on": "sample_id", "how": "semi", "where": FROZEN}],
+        # Naive version: 1,978 rows for 1,093 tumors, 406 of them another sample's slide (mostly the normal's).
+        # Same sample set, but every slide-level column on those rows is wrong. Engine flags both problems.
+        naive=[PRIMARY, {"op": "join", "table": "slides", "on": "patient_id", "how": "inner", "where": FROZEN}],
+        expected_n=1093,
+    ),
     # ---------------------------------------------------------------- traps that still fail (xfail)
+    Case(
+        "tumor_with_normal_slide",
+        "Primary tumors whose patient has a matched normal sample with a slide",
+        # Decision: the slide manifest is the authority on slides, so a slide with a normal barcode (-11) counts
+        # even when that normal sample is missing from sample_manifest (24 such samples). = 162.
+        # Counting only normals listed in the manifest gives 138. See gap #19.
+        """SELECT sample_id FROM samples
+           WHERE sample_type = 'Primary Tumor'
+             AND patient_id IN (SELECT patient_id FROM slides WHERE substr(sample_id, 14, 2) = '11')""",
+        # Right sample set, but a patient_id match is always flagged as a cross-sample problem (gap #2).
+        steps=[PRIMARY, {"op": "join", "table": "slides", "on": "patient_id", "how": "semi",
+                         "where": [{"column": "sample_id", "operator": "contains", "values": ["-11"]}]}],
+        expected_n=162,
+        gap="#2",
+    ),
     Case(
         "tumor_with_matched_normal",
         "Primary tumors whose patient also has a matched normal-tissue sample",
