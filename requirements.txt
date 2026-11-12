@@ -1,0 +1,4 @@
+pandas>=2.0
+streamlit>=1.37
+anthropic>=1.0    # optional: only for "Draft steps with AI"
+pytest

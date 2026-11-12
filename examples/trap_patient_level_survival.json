@@ -1,0 +1,10 @@
+{
+  "request": "ER-positive primary tumors with overall survival data",
+  "steps": [
+    {"op": "filter", "where": [{"column": "sample_type", "operator": "in", "values": ["Primary Tumor"]}]},
+    {"op": "join", "table": "clinical", "on": "sample_id", "how": "inner"},
+    {"op": "filter", "where": [{"column": "breast_carcinoma_estrogen_receptor_status", "operator": "eq", "values": ["Positive"]}]},
+    {"op": "join", "table": "survival", "on": "patient_id", "how": "inner",
+     "where": [{"column": "OS.time", "operator": "notnull"}]}
+  ]
+}
