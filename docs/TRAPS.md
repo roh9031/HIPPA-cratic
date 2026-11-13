@@ -37,7 +37,8 @@ Tables in the console: `samples` (one row per sample, the cohort base), `slides`
 | **HER2-positive primary tumors** (IHC or ISH positive) | 197 | ❌ xfail, gap #16 (no OR). Also #17: 3 columns disagree |
 | **Diagnostic slides, naive patient_id join** | 1,061 | ✅ passes (engine flags it, fix is correct) |
 | **Frozen slides, naive patient_id inner join** | 1,093 | ✅ passes (inflation + 406 cross-sample rows flagged) |
-| **Tumors with a matched normal that has a slide** | 162 | ❌ xfail, gap #2. Raised #19 (24 normals missing from manifest) |
+| **Tumors with a matched normal that has a slide** | 138 | ❌ xfail, gap #2. Was 162 before the organizers ruled that only manifest samples count (#19) |
+| **Primary tumors with OS data (redacted kept)** | — | ✅ organizer rule: keep redacted rows, flag them (#6) |
 | **All five data layers** (number quoted in the data README) | 535 | ✅ passes |
 | **All five layers + a diagnostic slide** (naive inner join: 572 rows / 531 samples) | 531 | ✅ passes (inflation flagged, semi fix correct) |
 | **Over 50** (age is text; > vs ≥) | 766 | ✅ (≥ 50 = 800) |

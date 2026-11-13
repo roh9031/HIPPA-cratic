@@ -16,7 +16,7 @@ the organizers. The challenge repo gives only the data, the briefs, the rules an
 | CLI (`run_cohort.py`), exit code 2 on unresolved problems, `--verify` / `--why` | ✅ works |
 | **Verify with SQL** + **Why isn't sample X** (`sqlcheck.py`, DuckDB) | ✅ works, tested |
 | AI drafting (`llm.py`) | ⚠️ never tested with a real key |
-| Tests | ✅ 92 tests (88 pass, 4 known-gap xfails): 25 trap cases with DuckDB answer keys (21 pass, 4 wait on engine gaps #2 and #16), 7 `AppTest` UI tests, SQL check and rebuild tests. Known gaps: [GAPS.md](GAPS.md) |
+| Tests | ✅ 97 tests (93 pass, 4 known-gap xfails): 26 trap cases with DuckDB answer keys (22 pass, 4 wait on engine gaps #2 and #16), 7 `AppTest` UI tests, SQL check and rebuild tests. Known gaps: [GAPS.md](GAPS.md) |
 | Clean install from README | ✅ tested Nov 12 (fresh clone of both repos, new venv). Rerun after the last merge on Friday |
 | README | ⚠️ missing team names and demo video link |
 
@@ -36,7 +36,7 @@ Everyone writes code. The submission paperwork is split up as small side tasks i
 | Teammate | Role | Main coding job | Side task | Done when |
 |---|---|---|---|---|
 | **A** (proposed: roh9031) | **1 · Trap hunter** | Invent requests judges might give. Write the correct answer as **DuckDB SQL** and add each as a `Case` in `tests/test_answer_key.py` (template inside) plus an example in `examples/`. Hand failures to B and C. | Review and merge PRs into `main` (repo owner) | 10+ traps, each passing or logged in GAPS.md. ✅ 25 traps (Nov 12) |
-| **B** | **2 · Engine** | Fix what A finds. First job: patient-level matching (GAPS.md #2). | Ask organizers in Discord what the checker expects for redacted survival records (GAPS.md #6) | A's tests pass |
+| **B** | **2 · Engine** | Fix what A finds. First job: patient-level matching (GAPS.md #2). | ~~Ask organizers about redacted records~~ answered Nov 12: keep and flag (GAPS.md #6) | A's tests pass |
 | **C** | **2b · Data** | Add mutation data as a joinable table so "TP53-mutated" requests work (GAPS.md #3), then protein/RNA if time allows | List third-party code and licenses in README | Gene-level mutation requests work with a test |
 | **D** | **3 · UI** | Dropdown step builder (op → table → column → value). Keep JSON as an "advanced" view. | Record the demo video | A non-coder builds the demo cohort without touching JSON. ✅ builder merged Nov 12 (demo video still to do) |
 | **E** | **4 · AI** | Test "Draft with AI" on 10 requests with a personal key, log results in `docs/ai_eval.md`, improve the prompt in `llm.py` | README setup steps + run the Friday clean-install check | ≥ 8/10 drafts correct or one edit away |

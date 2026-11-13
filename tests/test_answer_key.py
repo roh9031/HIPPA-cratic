@@ -136,7 +136,18 @@ CASES = [
         steps=[PRIMARY, {"op": "join", "table": "survival", "on": "sample_id", "how": "semi",
                          "where": [{"column": "OS.time", "operator": "notnull"},
                                    {"column": "Redaction", "operator": "isnull"}]}],
-        notes="GAPS.md #6.",
+        notes="Only when the user explicitly asks to exclude them. By default they stay in (next case). GAPS.md #6.",
+    ),
+    Case(
+        "survival_keeps_redacted",
+        "Primary tumors with overall survival data",
+        # Organizer rule (Discord, Nov 12): the sample manifest marks the 5 redacted primary tumors as having survival
+        # data, so they stay in the cohort. The tool flags them (info note) for a person to look at.
+        """SELECT sample_id FROM samples
+           WHERE sample_type = 'Primary Tumor'
+             AND sample_id IN (SELECT sample_id FROM survival WHERE "OS.time" IS NOT NULL)""",
+        steps=[PRIMARY, _semi("survival", [{"column": "OS.time", "operator": "notnull"}])],
+        notes="Includes the 5 redacted primary tumors. GAPS.md #6.",
     ),
     Case(
         "no_diagnostic_slide",
@@ -175,16 +186,18 @@ CASES = [
     Case(
         "tumor_with_normal_slide",
         "Primary tumors whose patient has a matched normal sample with a slide",
-        # Decision: the slide manifest is the authority on slides, so a slide with a normal barcode (-11) counts
-        # even when that normal sample is missing from sample_manifest (24 such samples). = 162.
-        # Counting only normals listed in the manifest gives 138. See gap #19.
+        # Organizer rule (Discord, Nov 12): sample_manifest.csv is the official list of samples; the slide manifest
+        # only describes slides. So the normal sample must be in the manifest AND have a slide = 138. The 24 normal
+        # samples that only appear in slide_manifest.csv are left out (counting them gave 162). See gap #19.
         """SELECT sample_id FROM samples
            WHERE sample_type = 'Primary Tumor'
-             AND patient_id IN (SELECT patient_id FROM slides WHERE substr(sample_id, 14, 2) = '11')""",
-        # Right sample set, but a patient_id match is always flagged as a cross-sample problem (gap #2).
+             AND patient_id IN (SELECT n.patient_id FROM samples n
+                                WHERE n.sample_type = 'Solid Tissue Normal'
+                                  AND n.sample_id IN (SELECT sample_id FROM slides))""",
+        # Best attempt today counts the orphan normals' slides too (162) and is flagged as cross-sample (gap #2).
         steps=[PRIMARY, {"op": "join", "table": "slides", "on": "patient_id", "how": "semi",
                          "where": [{"column": "sample_id", "operator": "contains", "values": ["-11"]}]}],
-        expected_n=162,
+        expected_n=138,
         gap="#2",
     ),
     Case(

@@ -171,6 +171,22 @@ st.warning("**Human review required.** A person should confirm the steps match t
            "This tool doesn't check the quality of values inside each layer, and it only joins the clinical, "
            "survival and slide tables.")
 
+
+@st.cache_data(show_spinner=False)
+def _data_notes():
+    from cohort_studio.sqlcheck import data_notes
+    return data_notes()
+
+
+try:
+    _notes = _data_notes()
+    with st.expander(f"Data notes: {len(_notes)} places where the source files disagree (checked live with DuckDB)"):
+        for n in _notes:
+            st.markdown(f"**{n['title']}.** {n['detail']}  \nExamples: " + ", ".join(f"`{e}`" for e in n["examples"]))
+except Exception as e:  # DuckDB missing or data not fetched: the rest of the page still works
+    st.caption(f"Data notes unavailable: {e}")
+
+
 def run_sql_check():
     try:
         from cohort_studio.sqlcheck import verify
