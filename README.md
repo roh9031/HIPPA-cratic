@@ -96,8 +96,8 @@ flags both the inflation and the 100 rows that attach another sample's record (n
 - `sample_manifest.csv` is the official list of samples and of which data each has (the organizers' rule).
   Samples that only appear in the slide manifest are left out; redacted survival records are kept and flagged.
   The app's **Data notes** panel lists every such mismatch between the files, computed live.
-- Layer membership (`has_*`) comes from `sample_manifest.csv`. Values inside each layer aren't quality-checked.
-- Joinable tables: clinical, survival, slides. Mutation/RNA/protein values can't be filtered on yet.
+- Layer membership (`has_*`) comes from `sample_manifest.csv`. The mutation matrix is checked for binary values; other layer values aren't quality-checked.
+- Joinable tables: clinical, survival, mutation, slides. Gene-level mutation presence (for example, TP53-mutated) can be filtered; RNA/protein/copy-number values and specific mutation variants can't yet.
 - A cohort is selected for research. Nothing here is a diagnosis, risk score or clinical claim.
 
 ## Data and licenses

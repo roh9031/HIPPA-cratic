@@ -22,6 +22,7 @@ import pytest
 
 pytest.importorskip("duckdb")
 
+from cohort_studio import data
 from cohort_studio.engine import run, unresolved_problems
 from cohort_studio.export import cohort_samples
 from cohort_studio.sqlcheck import connect
@@ -290,6 +291,20 @@ CASES = [
         notes="Matches the 535 in the challenge's data/tcga-brca/README.md. 535 patients too (no duplicates).",
     ),
     Case(
+        "tp53_mutated_primary",
+        "Primary tumors with a TP53 mutation",
+        """SELECT sample_id FROM samples
+           WHERE sample_type = 'Primary Tumor'
+             AND sample_id IN (
+               SELECT sample_id FROM mutation WHERE gene = 'TP53' AND mutated
+             )""",
+        steps=[PRIMARY, _semi("mutation", [
+            {"column": "gene", "operator": "eq", "values": ["TP53"]},
+            {"column": "mutated", "operator": "eq", "values": ["true"]},
+        ])],
+        notes="Uses the binary gene-level matrix; this identifies mutation presence, not a specific variant.",
+    ),
+    Case(
         "all_five_layers_diagnostic_slide",
         "Primary tumors with all five data layers and a diagnostic slide",
         """SELECT sample_id FROM samples
@@ -396,6 +411,19 @@ CASES = [
               "first (gap #9).",
     ),
 ]
+
+
+def test_mutation_table_is_sparse_and_manifest_bound():
+    mutations = data.load("mutation")
+    samples = data.load("samples")
+    manifest_samples = set(samples["sample_id"])
+
+    assert set(mutations.columns) == {"sample_id", "patient_id", "gene", "mutated"}
+    assert mutations["sample_id"].isin(manifest_samples).all()
+    assert mutations["sample_id"].str.len().eq(15).all()
+    assert mutations["patient_id"].eq(mutations["sample_id"].str[:12]).all()
+    assert mutations["mutated"].all()
+    assert not mutations.duplicated(["sample_id", "gene"]).any()
 
 
 def _param(c):
