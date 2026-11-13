@@ -31,7 +31,7 @@ problems with one-click fixes, and exports `cohort_samples.csv` (one row per 15-
 - `cohort_studio/sqlcheck.py`: DuckDB views over the raw files (`connect()`), the steps→SQL translator behind
   the app's **Verify with SQL** (`verify()`), and **Why isn't sample X** (`trace()`). `scripts/sql.py`: SQL console.
 - `app.py`: Streamlit UI. `run_cohort.py`: CLI (`--verify`, `--why ID`; exit 2 = unresolved problems, 3 = SQL
-  disagrees). `tests/`: pytest; `test_answer_key.py` holds 25 trap cases with SQL answer keys.
+  disagrees). `tests/`: pytest; `test_answer_key.py` holds 26 trap cases with SQL answer keys.
 
 ## Known-good numbers (demo)
 Primary tumor 1,101 → has RNA 1,097 → has protein 742 → join diagnostic slides = 776 rows / 731 samples (inflated)
@@ -47,6 +47,7 @@ All five data layers = 535; plus a diagnostic slide = 531 (572 rows if inner-joi
 
 ## Open TODOs
 - Test AI drafting on 5–10 requests; more trap examples and tests
-- Engine gaps that fail trap tests: OR conditions (#16), patient-level matching (#2); also #18 (see docs/GAPS.md)
+- OR groups (`{"any"/"all": [...]}`) and patient-level matching (`allow_cross_sample`) work in the engine,
+  the builder (read-only groups) and the SQL check; all 26 trap cases pass. Next gaps in docs/GAPS.md
 - More joinable tables (mutation/protein values); fill in README team names and demo video
 - Run `pytest -q` and the app after every change

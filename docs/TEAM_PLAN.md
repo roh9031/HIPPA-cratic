@@ -16,7 +16,7 @@ the organizers. The challenge repo gives only the data, the briefs, the rules an
 | CLI (`run_cohort.py`), exit code 2 on unresolved problems, `--verify` / `--why` | ✅ works |
 | **Verify with SQL** + **Why isn't sample X** (`sqlcheck.py`, DuckDB) | ✅ works, tested |
 | AI drafting (`llm.py`) | ⚠️ never tested with a real key |
-| Tests | ✅ 118 tests, all passing: 26 trap cases with DuckDB answer keys (all pass since B's OR and patient-level fixes, Nov 12), `AppTest` UI tests, SQL check, rebuild, recommended-fix and version-compare tests. Known gaps: [GAPS.md](GAPS.md) |
+| Tests | ✅ 121 tests, all passing: 26 trap cases with DuckDB answer keys (all pass since B's OR and patient-level fixes, Nov 12), `AppTest` UI tests, SQL check, rebuild, recommended-fix and version-compare tests. Known gaps: [GAPS.md](GAPS.md) |
 | Clean install from README | ✅ tested Nov 12 (fresh clone of both repos, new venv). Rerun after the last merge on Friday |
 | README | ⚠️ missing team names and demo video link |
 
