@@ -81,3 +81,31 @@ def test_numbers_match_by_value():
            "where": [{"column": "objective", "operator": "ne", "values": ["40.0"]}]}]
     df2, res2 = run(ne)
     assert verify(ne, df2, res2)["match"]
+
+
+# ---------------------------------------------------------------- Data notes (organizer rules, Nov 12)
+from cohort_studio.sqlcheck import data_notes  # noqa: E402
+
+
+def test_data_notes_point_out_file_mismatches():
+    titles = " | ".join(n["title"] for n in data_notes())
+    assert "24 samples have slides but aren't in the sample manifest" in titles
+    assert "6 survival records are marked redacted" in titles
+
+
+def test_orphan_normal_slides_never_enter_a_cohort():
+    # Organizer rule: sample_manifest.csv is the official sample list. Slides of samples missing from it can't join.
+    steps = [{"op": "join", "table": "slides", "on": "sample_id", "how": "inner"}]
+    df, _ = run(steps)
+    assert "TCGA-A7-A56D-11" not in set(df["sample_id"])
+
+
+def test_redacted_survival_records_are_kept_but_flagged():
+    # Organizer rule: keep them (the manifest says they have survival data), and flag them for review.
+    steps = [{"op": "filter", "where": [{"column": "sample_type", "operator": "in", "values": ["Primary Tumor"]}]},
+             {"op": "join", "table": "survival", "on": "sample_id", "how": "semi",
+              "where": [{"column": "OS.time", "operator": "notnull"}]}]
+    df, res = run(steps)
+    assert "TCGA-A7-A0DC-01" in set(df["sample_id"])
+    w = next(w for w in res[-1].warnings if w.kind == "redacted")
+    assert w.severity == "info" and "kept" in w.message

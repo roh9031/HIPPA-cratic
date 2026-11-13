@@ -37,6 +37,8 @@ Primary tumor 1,101 → has RNA 1,097 → has protein 742 → join diagnostic sl
 All five data layers = 535; plus a diagnostic slide = 531 (572 rows if inner-joined). More in `docs/TRAP_LOG.md`.
 
 ## Rules to respect
+- Organizer data rule (Nov 12): `sample_manifest.csv` is the official sample list. Samples only in the slide
+  manifest (24 normals) stay out; redacted survival rows (6) stay in and are flagged. Point out mismatches.
 - No API keys in the repo, no raw TCGA files committed, and no clinical claims (diagnosis/risk/treatment).
 - The app must show a human-review notice and one visible limitation.
 - Code freeze: Sat Nov 14, 2:15 PM ET. A finished workflow beats an ambitious broken one.

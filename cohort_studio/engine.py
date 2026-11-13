@@ -298,10 +298,12 @@ def _redaction_check(df, right, table, on, step, i, steps) -> list[Warning_]:
     return [Warning_(
         "redacted", "info",
         f"{hit['sample_id'].nunique()} samples matched {table} records marked as redacted "
-        f"({', '.join(sorted(red['Redaction'].astype(str).unique()))}). Their values are still filled in, so "
-        f"they count as matches. Exclude them unless you know the redaction doesn't matter for your question.",
+        f"({', '.join(sorted(red['Redaction'].astype(str).unique()))}). They are **kept**: their values are filled "
+        f"in and sample_manifest.csv (the official sample list) marks them as having this data, which is the "
+        f"organizers' rule. A person should look at them before relying on their values.",
         examples=hit[["sample_id", "patient_id"]].drop_duplicates().head(10).to_dict("records"),
-        fixes=[{"label": f"Exclude redacted {table} records", "steps": _with_step(steps, i, where=where)}],
+        fixes=[{"label": f"Exclude redacted {table} records (only if your question requires it)",
+                "steps": _with_step(steps, i, where=where)}],
     )]
 
 

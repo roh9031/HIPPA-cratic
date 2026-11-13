@@ -277,3 +277,27 @@ showed the mismatch (SQL: 920). Fix: `eq` / `in` / `ne` / `not_in` now match num
 and the SQL translator. Test: `test_numbers_match_by_value`. Logged as GAPS.md #29.
 
 **New data conflicts for GAPS.md #17:** gender (1 tumor), vital status vs OS (1 tumor), PAM50 (43 tumors).
+
+## Organizer answers (Discord, Nov 12)
+
+> Treat sample_manifest.csv as the official list of samples and what data each one has. The slide manifest only
+> tells you about slides, so don't use it to decide which samples exist.
+
+**Redacted survival rows → keep, and flag.** All 6 are marked `has_survival = true` in the manifest:
+```sql
+SELECT v.sample_id, s.sample_type, s.has_survival, v.Redaction, v."OS.time"
+FROM survival v LEFT JOIN samples s USING (sample_id) WHERE v.Redaction IS NOT NULL ORDER BY 1;
+-- 6 rows, 5 primary tumors, all has_survival = true
+```
+The engine's note now says they're kept; new answer-key case `survival_keeps_redacted`.
+
+**Normal samples only in the slide manifest → leave out, and point out the mismatch.** The matched-normal-with-slide
+answer key changes from 162 (option B above) to option A, counting only normals in the manifest:
+```sql
+SELECT count(*) FROM samples t WHERE t.sample_type='Primary Tumor' AND t.patient_id IN (
+  SELECT m.patient_id FROM samples m WHERE m.sample_type='Solid Tissue Normal'
+                                       AND m.sample_id IN (SELECT sample_id FROM slides));   -- 138
+SELECT count(DISTINCT sample_id) samples, count(*) slides FROM slides
+WHERE sample_id NOT IN (SELECT sample_id FROM samples);                                   -- 24 samples, 50 slides
+```
+The app's **Data notes** panel lists the mismatch, and "Why isn't a sample in my cohort?" explains any of the 24.

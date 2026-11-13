@@ -39,14 +39,14 @@ python run_cohort.py examples/demo_diagnostic_slides.json    # same engine from 
 python run_cohort.py examples/demo_diagnostic_slides.json --verify --why TCGA-E2-A15E-01   # SQL check + trace one sample
 python run_cohort.py --ask "ER-positive primary tumors with a diagnostic slide"   # AI draft, needs ANTHROPIC_API_KEY
 python scripts/sql.py                                        # DuckDB SQL console over the raw files
-pytest -q                                                    # 92 tests, see below
+pytest -q                                                    # 97 tests, see below
 ```
 `run_cohort.py` exits with code 2 if the cohort still has duplicates or cross-sample links, and 3 if `--verify` finds
 the SQL version disagrees. **The demo example is the careless version on purpose**, so the command above prints
 `UNRESOLVED` and exits 2: that's the tool catching the inflated join. Its output files (`cohort_samples.csv`,
 `cohort.sql`) go in the current folder.
 
-`pytest -q` runs 92 tests (88 pass; 4 are known gaps marked as expected failures, listed in
+`pytest -q` runs 97 tests (93 pass; 4 are known gaps marked as expected failures, listed in
 [docs/GAPS.md](docs/GAPS.md)): the demo numbers, **25 cohort requests checked against independent DuckDB SQL
 answer keys** (`tests/test_answer_key.py`, queries in [docs/TRAP_LOG.md](docs/TRAP_LOG.md)), the SQL check and
 sample trace (`tests/test_verify.py`), the exported rebuild script, and the app itself (`tests/test_app.py`).
@@ -88,6 +88,9 @@ flags both the inflation and the 100 rows that attach another sample's record (n
   (steps, funnel, input checksums) and `rebuild_cohort.py`.
 
 ## Limitations (also shown in the app)
+- `sample_manifest.csv` is the official list of samples and of which data each has (the organizers' rule).
+  Samples that only appear in the slide manifest are left out; redacted survival records are kept and flagged.
+  The app's **Data notes** panel lists every such mismatch between the files, computed live.
 - Layer membership (`has_*`) comes from `sample_manifest.csv`. Values inside each layer aren't quality-checked.
 - Joinable tables: clinical, survival, slides. Mutation/RNA/protein values can't be filtered on yet.
 - A cohort is selected for research. Nothing here is a diagnosis, risk score or clinical claim.

@@ -221,3 +221,62 @@ def trace(steps: list[dict], sample_id: str, ddir: str | None = None) -> dict:
 def _records(con, sql: str) -> list[dict]:
     rel = con.sql(sql)
     return [dict(zip(rel.columns, row)) for row in rel.fetchall()]
+
+
+# ---------------------------------------------------------------- Data notes: where the source files disagree
+
+_PAM50 = "CASE PAM50Call_RNAseq WHEN 'LumA' THEN 'Luminal A' WHEN 'LumB' THEN 'Luminal B' WHEN 'Her2' THEN 'HER2-enriched' " \
+         "WHEN 'Basal' THEN 'Basal-like' WHEN 'Normal' THEN 'Normal-like' END"
+
+
+def data_notes(ddir: str | None = None) -> list[dict]:
+    """Facts about the frozen files a researcher should know, computed live. Each: title, detail, examples."""
+    con = connect(ddir)
+    try:
+        def one(sql):
+            return con.sql(sql).fetchall()[0]
+
+        def ids(sql):
+            return [r[0] for r in con.sql(sql + " ORDER BY 1 LIMIT 5").fetchall()]
+
+        notes = []
+        n, k = one("SELECT count(DISTINCT sample_id), count(*) FROM slides WHERE sample_id NOT IN (SELECT sample_id FROM samples)")
+        notes.append({
+            "title": f"{n} samples have slides but aren't in the sample manifest",
+            "detail": f"slide_manifest.csv lists {k} slides for {n} samples (normal tissue, barcode -11) that "
+                      f"sample_manifest.csv doesn't have. The sample manifest is the official list of samples, so "
+                      f"these are left out of every cohort (organizers' rule). Type one into \"Why isn't a sample in "
+                      f"my cohort?\" to see it explained.",
+            "examples": ids("SELECT DISTINCT sample_id FROM slides WHERE sample_id NOT IN (SELECT sample_id FROM samples)")})
+        n, t = one("SELECT count(*), count(*) FILTER (WHERE s.sample_type = 'Primary Tumor') FROM survival v "
+                   "JOIN samples s USING (sample_id) WHERE v.Redaction IS NOT NULL")
+        notes.append({
+            "title": f"{n} survival records are marked redacted but still have values",
+            "detail": f"{t} of them are primary tumors. The sample manifest marks them as having survival data, so "
+                      f"they are kept (organizers' rule), and the tool shows a note whenever they enter a cohort.",
+            "examples": ids("SELECT sample_id FROM survival WHERE Redaction IS NOT NULL")})
+        n = one("SELECT count(*) FROM clinical c JOIN survival v USING (sample_id) "
+                "WHERE (c.vital_status = 'DECEASED' AND v.OS = 0) OR (c.vital_status = 'LIVING' AND v.OS = 1)")[0]
+        notes.append({
+            "title": f"Vital status and overall survival disagree for {n} sample(s)",
+            "detail": "clinical.tsv `vital_status` vs survival.tsv `OS`. \"Patients who died\" depends on which one "
+                      "you use; our answer keys use `OS = 1` from the curated survival table.",
+            "examples": ids("SELECT sample_id FROM clinical c JOIN survival v USING (sample_id) WHERE "
+                            "(c.vital_status = 'DECEASED' AND v.OS = 0) OR (c.vital_status = 'LIVING' AND v.OS = 1)")})
+        n = one(f"SELECT count(*) FROM clinical WHERE PAM50Call_RNAseq IS NOT NULL AND PAM50_mRNA_nature2012 IS NOT NULL "
+                f"AND {_PAM50} IS DISTINCT FROM PAM50_mRNA_nature2012")[0]
+        notes.append({
+            "title": f"Two PAM50 subtype columns disagree for {n} samples",
+            "detail": "`PAM50Call_RNAseq` vs `PAM50_mRNA_nature2012` (where both have a call). Say which column a "
+                      "subtype cohort uses.",
+            "examples": ids(f"SELECT sample_id FROM clinical WHERE PAM50Call_RNAseq IS NOT NULL AND "
+                            f"PAM50_mRNA_nature2012 IS NOT NULL AND {_PAM50} IS DISTINCT FROM PAM50_mRNA_nature2012")})
+        n = one("SELECT count(*) FROM clinical WHERE gender IS NOT NULL AND Gender_nature2012 IS NOT NULL "
+                "AND gender <> Gender_nature2012")[0]
+        notes.append({
+            "title": f"Two gender columns disagree for {n} sample(s)",
+            "detail": "`gender` vs `Gender_nature2012`.",
+            "examples": ids("SELECT sample_id FROM clinical WHERE gender <> Gender_nature2012")})
+    finally:
+        con.close()
+    return notes
