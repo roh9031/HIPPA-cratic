@@ -95,6 +95,34 @@ def test_her2_example_preserves_or_group():
     assert steps[1]["where"][0]["any"]
 
 
+def test_an_or_group_loads_as_editable_rows():
+    """The HER2 group is two dropdown rows joined by "or", not a read-only blob (#16, #30)."""
+    at = run_app()
+    next(b for b in at.button if b.label == "her2 positive").click().run()
+    uid = at.session_state.b_uids[1]
+    first, second = at.session_state.b_conds[uid]
+    assert at.segmented_control(key=f"b_w_{uid}_{second}_join").value == "or"
+    assert not has_widget(at, f"b_w_{uid}_{first}_join")       # nothing to join the first row to
+    assert "her2" in at.selectbox(key=f"b_w_{uid}_{second}_col").value
+
+
+def test_switching_a_connector_to_or_widens_the_cohort():
+    """Two conditions that no sample can satisfy at once: "and" gives 0, "or" gives both groups."""
+    at = run_app()
+    steps = [{"op": "filter", "where": [
+        {"column": "sample_type", "operator": "eq", "values": ["Primary Tumor"]},
+        {"column": "sample_type", "operator": "eq", "values": ["Metastatic"]}]}]
+    at.text_area(key="steps_text").set_value(json.dumps(steps)).run()
+    assert counts(at)["Samples"] == "0"
+
+    uid = at.session_state.b_uids[0]
+    second = at.session_state.b_conds[uid][1]
+    at.segmented_control(key=f"b_w_{uid}_{second}_join").set_value("or").run()
+    assert not at.exception
+    assert counts(at)["Samples"] == "1,108"
+    assert json.loads(at.session_state.steps_text)[0]["where"] == [{"any": steps[0]["where"]}]
+
+
 def test_json_view_preserves_patient_level_opt_in():
     at = run_app()
     steps = [

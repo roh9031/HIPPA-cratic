@@ -69,7 +69,7 @@ testable code. The model never sees patient rows.
 | `cohort_studio/advice.py` | Ranks the fixes a warning offers: which one the UI stars, why, and what's wrong with the others. Judges a fix by what it changes, not its label, and defers to the engine if a fix is marked `recommended`. |
 | `cohort_studio/versions.py` | Remembers each distinct cohort built in a session (in session state only) and diffs two of them: counts, the samples that moved, and a one-sentence summary. |
 | `cohort_studio/export.py` | One row per unique 15-char `sample_id`. Definition JSON with funnel and file hashes. A rebuild script. |
-| `cohort_studio/builder.py` | The dropdown step builder: renders the step list as widgets, keyed by a per-step id so moving or deleting a step keeps everyone's values, and keeps the “Advanced: JSON” box in sync both ways. Column and value choices for a step come from the cohort *as of that step* (it runs the engine on the steps before it). Only produces the step format below. |
+| `cohort_studio/builder.py` | The dropdown step builder: renders the step list as widgets, keyed by a per-step id so moving or deleting a step keeps everyone's values, and keeps the “Advanced: JSON” box in sync both ways. Conditions are rows joined by an `and`/`or` connector: a run of `or` rows is one `{"any": [...]}` group, so OR requests are built with dropdowns (a nested group still loads, shown read-only, and is edited in the JSON). Column and value choices for a step come from the cohort *as of that step* (it runs the engine on the steps before it). Only produces the step format below. |
 | `cohort_studio/sqlcheck.py` | DuckDB views over the raw files. Translates a step list into one SQL query (a CTE per step) for **Verify with SQL**, and traces one sample through it for **Why isn't sample X in my cohort?**. Doesn't use the engine's code, so it's an independent check. |
 | `app.py` | Streamlit page: 1 describe → 2 build → 3 funnel, warnings, sample trace → 4 review, Verify with SQL, export. |
 | `run_cohort.py` | Same engine from the command line. `--verify` and `--why ID`. Exit code 2 if problems remain, 3 if the SQL check disagrees. |
@@ -107,6 +107,8 @@ patient (12-char barcode, TCGA-XX-XXXX)
   the other sample's columns. Row-producing patient joins remain unsafe and are still warned.
 - `where`: conditions are ANDed by default. An item such as `{"any": [condition, condition]}`
   creates an OR group; nested `all` groups support OR expressions containing multiple AND conditions.
+  The builder draws a flat `any` group as a run of `or` rows and writes it back in the same shape
+  (`builder._flatten` / `_regroup`); anything nested is passed through untouched.
 - `operator`: `in`, `not_in`, `eq`, `ne`, `gt`, `ge`, `lt`, `le`, `notnull`, `isnull`, `startswith`, `contains`
   (text matching ignores case)
 

@@ -68,7 +68,8 @@ flags both the inflation and the 100 rows that attach another sample's record (n
 ## How it works
 - `cohort_studio/builder.py`: the step builder in the app. Each step is a row of dropdowns (op → table →
   column → value), so nobody has to write JSON; the JSON view is still there under “Advanced” and edits in
-  it load straight back into the builder. The value lists come from the cohort as it stands at that step.
+  it load straight back into the builder. Conditions are joined with **and** by default, and a connector can
+  be switched to **or** ("HER2-positive by IHC *or* ISH" = 197 tumors, built without typing anything). The value lists come from the cohort as it stands at that step.
 - `cohort_studio/engine.py`: a cohort is a JSON list of `filter` / `join` / `collapse` steps. After every
   step it checks: did rows grow faster than distinct samples? Did a patient-level join attach records from a
   different sample? Were samples dropped only because a value was missing? Each problem comes with fixes.

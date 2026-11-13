@@ -121,7 +121,7 @@ def set_steps(steps) -> None:
         uid = _new_uid()
         ss.b_uids.append(uid)
         ss.b_steps[uid] = s
-        ss.b_conds[uid] = [_new_uid() for c in (s.get("where") or []) if not _is_group(c)]
+        ss.b_conds[uid] = [_new_uid() for _ in _flatten(s.get("where") or [])[0]]
     text = json.dumps(steps, indent=2)
     ss.steps_text = text
     ss.b_json_shown = text
@@ -167,10 +167,42 @@ def _is_group(condition: dict) -> bool:
     return "any" in condition or "all" in condition
 
 
+def _flatten(where: list[dict]) -> tuple[list[tuple[dict, str]], list[dict]]:
+    """Turn a `where` list into editable rows, plus the groups too nested to draw as rows.
+
+    `[a, {"any": [b, c]}, d]` becomes `[(a, "and"), (b, "and"), (c, "or"), (d, "and")]`: a run of
+    "or" rows is one OR group. An `all` group, or an `any` group with a group inside it, can't be
+    drawn as a flat run, so it comes back separately and is shown read-only (edit it in the JSON).
+    """
+    rows: list[tuple[dict, str]] = []
+    extras: list[dict] = []
+    for c in where or []:
+        if not _is_group(c):
+            rows.append((c, "and"))
+        elif c.get("any") and all(isinstance(n, dict) and not _is_group(n) for n in c["any"]):
+            rows += [(nested, "or" if n else "and") for n, nested in enumerate(c["any"])]
+        else:
+            extras.append(c)
+    return rows, extras
+
+
+def _regroup(rows: list[tuple[dict, str]]) -> list[dict]:
+    """The inverse of `_flatten`: each run of "or" rows becomes one {"any": [...]} group."""
+    groups: list[list[dict]] = []
+    for cond, join in rows:
+        if join == "or" and groups:
+            groups[-1].append(cond)
+        else:
+            groups.append([cond])
+    return [g[0] if len(g) == 1 else {"any": g} for g in groups]
+
+
 def _condition(uid: int, cuid: int, columns: list[str], values: dict[str, list[str]],
-               seed: dict) -> dict | None:
-    """One condition row. Returns None while it has no value yet, so a half-typed
-    condition leaves the funnel alone instead of failing the step."""
+               seed: dict, seed_join: str, first: bool) -> tuple[dict | None, str]:
+    """One condition row, with the and/or connector that ties it to the row above.
+
+    Returns the condition and that connector. The condition is None while the row has no value
+    yet, so a half-typed condition leaves the funnel alone instead of failing the step."""
     ss = st.session_state
     col_key = f"{WIDGET_PREFIX}{uid}_{cuid}_col"
     opr_key = f"{WIDGET_PREFIX}{uid}_{cuid}_opr"
@@ -181,6 +213,17 @@ def _condition(uid: int, cuid: int, columns: list[str], values: dict[str, list[s
     ss.setdefault(opr_key, seed.get("operator") or "in")
     ss.setdefault(val_key, seed_vals)
     ss.setdefault(num_key, seed_vals[0] if seed_vals else "")
+    join_key = f"{WIDGET_PREFIX}{uid}_{cuid}_join"
+    ss.setdefault(join_key, seed_join)
+
+    join = "and"
+    if not first:
+        join = st.segmented_control(
+            "Combine with the condition above", ("and", "or"), key=join_key, required=True,
+            label_visibility="collapsed",
+            help="**and**: both conditions must be true. **or**: either one is enough. "
+                 "A run of *or* rows is treated as one group, so `A and B or C` keeps samples "
+                 "where A is true **and** (B or C) is true.") or "and"
 
     row = st.container(horizontal=True, vertical_alignment="bottom")
     col = row.selectbox("Column", _with_current(columns, ss[col_key]), key=col_key)
@@ -188,7 +231,7 @@ def _condition(uid: int, cuid: int, columns: list[str], values: dict[str, list[s
                         format_func=lambda o: OPERATOR_LABELS[o])
     cond = {"column": col, "operator": opr}
     if opr in NO_VALUE_OPS:
-        return cond
+        return cond, join
     if opr in NUMBER_OPS:
         num = row.text_input("Number", key=num_key, placeholder="e.g. 1825")
         picked = [num.strip()] if num.strip() else []
@@ -199,20 +242,23 @@ def _condition(uid: int, cuid: int, columns: list[str], values: dict[str, list[s
             help="Matching ignores case and surrounding spaces. Several values mean 'any of these'.")]
     if not picked:
         st.caption(f":material/info: `{col}` has no value yet, so this condition isn't being applied.")
-        return None
-    return {**cond, "values": picked}
+        return None, join
+    return {**cond, "values": picked}, join
 
 
 def _conditions(uid: int, columns: list[str], values: dict[str, list[str]],
                 seed_where: list[dict]) -> list[dict]:
     cuids = st.session_state.b_conds.setdefault(uid, [])
-    simple_seeds = [c for c in seed_where if not _is_group(c)]
-    conds = [c for c in (_condition(uid, cuid, columns, values,
-                                    simple_seeds[n] if n < len(simple_seeds) else {})
-                         for n, cuid in enumerate(cuids)) if c]
-    groups = [c for c in seed_where if _is_group(c)]
+    seeds, groups = _flatten(seed_where)
+    rows: list[tuple[dict, str]] = []
+    for n, cuid in enumerate(cuids):
+        seed, seed_join = seeds[n] if n < len(seeds) else ({}, "and")
+        cond, join = _condition(uid, cuid, columns, values, seed, seed_join, first=n == 0)
+        if cond:
+            rows.append((cond, join))
+    conds = _regroup(rows)
     for group in groups:
-        st.caption("OR/AND group is read-only here; edit it in the JSON view.")
+        st.caption("This group is nested, so it's read-only here; edit it in the JSON view below.")
         st.json(group)
     with st.container(horizontal=True):
         st.button("Add condition", icon=":material/add:", key=f"{WIDGET_PREFIX}{uid}_addc",
@@ -251,8 +297,8 @@ def _step(number: int, uid: int, prefix: list[dict]) -> tuple[dict, bool]:
 
         if op == "filter":
             columns, values = _schema_for(prefix)
-            st.caption("Keeps the samples that match. Every condition must be true "
-                       "(there's no OR yet — see the limitations).")
+            st.caption("Keeps the samples that match. Conditions are joined with **and**; "
+                       "switch a connector to **or** to accept either one.")
             step = {"op": "filter", "where": _conditions(uid, columns, values, seed.get("where") or [])}
 
         elif op == "join":
