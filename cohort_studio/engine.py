@@ -91,6 +91,13 @@ def validate_steps(steps) -> list[str]:
                 errs.append(f"Step {i}: on must be one of {data.KEYS}.")
             if s.get("how", "inner") not in JOIN_HOW:
                 errs.append(f"Step {i}: how must be one of {JOIN_HOW}.")
+            if "allow_cross_sample" in s and not isinstance(s["allow_cross_sample"], bool):
+                errs.append(f"Step {i}: allow_cross_sample must be true or false.")
+            if s.get("allow_cross_sample"):
+                if s.get("on", "sample_id") != "patient_id":
+                    errs.append(f"Step {i}: allow_cross_sample requires on='patient_id'.")
+                if s.get("how", "inner") not in ("semi", "anti"):
+                    errs.append(f"Step {i}: allow_cross_sample requires a semi or anti join.")
         if op == "collapse" and s.get("level", "sample") not in LEVELS:
             errs.append(f"Step {i}: level must be one of {LEVELS}.")
     return errs
@@ -255,6 +262,7 @@ def _missing_value_warnings(df, where_list, where_name, cohort=None, on="sample_
 
 def _join(df, step, i, steps, ddir):
     table, on, how = step["table"], step.get("on", "sample_id"), step.get("how", "inner")
+    allow_cross_sample = step.get("allow_cross_sample", False) and how in ("semi", "anti")
     right = data.load(table, ddir)
     warns = _missing_value_warnings(right, step.get("where"), f"table {table!r}", cohort=df, on=on)
     right = right[_apply_where(right, step.get("where"), f"table {table!r}")]
@@ -264,7 +272,7 @@ def _join(df, step, i, steps, ddir):
     if how in ("semi", "anti"):
         hit = df[on].isin(right[on])
         out = df[hit] if how == "semi" else df[~hit]
-        if on == "patient_id" and how == "semi":
+        if on == "patient_id" and how == "semi" and not allow_cross_sample:
             by_sample = df["sample_id"].isin(right["sample_id"])
             only_via_patient = df[hit & ~by_sample]
             if len(only_via_patient):
@@ -281,7 +289,7 @@ def _join(df, step, i, steps, ddir):
 
     right = _prepare_right(df, right, table, on)
     out = df.merge(right, on=on, how=how)
-    if on == "patient_id":
+    if on == "patient_id" and not allow_cross_sample:
         other = f"sample_id__{table}"
         if other in out.columns:
             bad = out[out[other].notna() & (out[other] != out["sample_id"])]

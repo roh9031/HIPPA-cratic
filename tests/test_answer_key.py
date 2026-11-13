@@ -181,11 +181,11 @@ CASES = [
         """SELECT sample_id FROM samples
            WHERE sample_type = 'Primary Tumor'
              AND patient_id IN (SELECT patient_id FROM slides WHERE substr(sample_id, 14, 2) = '11')""",
-        # Right sample set, but a patient_id match is always flagged as a cross-sample problem (gap #2).
+        # This is an intentional patient-level existence check, not a row-level data join.
         steps=[PRIMARY, {"op": "join", "table": "slides", "on": "patient_id", "how": "semi",
+                         "allow_cross_sample": True,
                          "where": [{"column": "sample_id", "operator": "contains", "values": ["-11"]}]}],
         expected_n=162,
-        gap="#2",
     ),
     Case(
         "tumor_with_matched_normal",
@@ -193,12 +193,11 @@ CASES = [
         """SELECT sample_id FROM samples
            WHERE sample_type = 'Primary Tumor'
              AND patient_id IN (SELECT patient_id FROM samples WHERE sample_type = 'Solid Tissue Normal')""",
-        # Best the engine can do today: keep tumors whose *patient* has a normal clinical record. The sample set is
-        # right, but matching on patient_id is always flagged as a cross-sample problem, so export is blocked.
+        # This is an intentional patient-level existence check, not a row-level data join.
         steps=[PRIMARY, {"op": "join", "table": "clinical", "on": "patient_id", "how": "semi",
+                         "allow_cross_sample": True,
                          "where": [{"column": "sample_type", "operator": "eq", "values": ["Solid Tissue Normal"]}]}],
         expected_n=139,
-        gap="#2",
     ),
     Case(
         "her2_positive",

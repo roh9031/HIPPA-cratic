@@ -92,10 +92,16 @@ patient (12-char barcode, TCGA-XX-XXXX)
 - `op`: `filter` | `join` | `collapse`
 - `how`: `inner` | `left` | `semi` (keep if a match exists, never duplicates) | `anti` (drop if a match exists)
 - `on`: `sample_id` | `patient_id`
+- `allow_cross_sample`: optional boolean for intentional patient-level existence checks. It is valid only
+  with `on: "patient_id"` and `how: "semi"` or `"anti"`. It suppresses the cross-sample warning because
+  the step selects the current samples based on another sample from the same patient; it does not attach
+  the other sample's columns. Row-producing patient joins remain unsafe and are still warned.
 - `operator`: `in`, `not_in`, `eq`, `ne`, `gt`, `ge`, `lt`, `le`, `notnull`, `isnull`, `startswith`, `contains`
   (text matching ignores case)
 
-**Changing this format affects the UI builder, the AI schema and the engine. Agree on any change first.**
+The optional `allow_cross_sample` field is the explicit opt-in for patient-level existence matching. Without
+it, patient-level joins retain the safety warning for possible cross-sample links. Changes to this contract
+affect the UI builder, the AI schema and the engine.
 
 ## Open questions for the team
 
@@ -104,5 +110,7 @@ patient (12-char barcode, TCGA-XX-XXXX)
 3. **Which tables to add?** Mutation and protein values would let judges ask "with a TP53 mutation". Each new table needs a grain and a key in `data.TABLES`.
 4. **Inner join default:** should the UI suggest `semi` by default when a user picks a slide-grain table?
 5. **Standalone rebuild script?** `rebuild_cohort.py` currently needs this repo installed. Is that acceptable for "a workflow someone else can rerun"?
-6. **Patient-level requests** like "tumors whose patient also has a matched normal sample": the engine can't join the sample manifest to itself, and any `patient_id` semi-join is flagged as a problem even when that's what the user wants. Judges could plausibly ask this. Proposal: add a `samples` joinable table, and flag cross-sample links only when the user didn't ask for patient-level matching.
+6. **Patient-level requests** like "tumors whose patient also has a matched normal sample": use a semi-join
+   with `allow_cross_sample: true` for intentional existence matching. Row-producing patient joins remain
+   flagged because they can attach another sample's record.
 7. **Deploy?** Run locally for judging, or also host it (e.g. Streamlit Community Cloud) as a backup?

@@ -82,7 +82,8 @@ SYSTEM = """You translate a researcher's cohort request into steps for Cohort St
 Step types (JSON):
 - filter: {"op":"filter","where":[conditions]} keeps rows matching ALL conditions. A filter can only use
   columns already in the cohort: base-table columns, or columns from a table joined in an earlier step.
-- join: {"op":"join","table":T,"on":"sample_id"|"patient_id","how":"inner"|"left"|"semi"|"anti","where":[conditions on T]}
+- join: {"op":"join","table":T,"on":"sample_id"|"patient_id","how":"inner"|"left"|"semi"|"anti",
+  "allow_cross_sample":true|false,"where":[conditions on T]}
 - collapse: {"op":"collapse","level":"sample"|"patient"}
 Condition: {"column":C,"operator":OP,"values":[strings]}. Operators: in, not_in, eq, ne, gt, ge, lt, le,
 notnull, isnull (no values), startswith, contains. Use exact values listed in the schema below.
@@ -91,6 +92,9 @@ Set unused fields to null.
 Rules:
 - Use the base table's has_* flags for "has RNA / protein / mutation / copy number / survival data".
 - To filter on a clinical field, first join `clinical` on sample_id, then filter.
+- For an intentional patient-level existence request (for example, tumors whose patient has a normal
+  sample), use a semi-join on patient_id with allow_cross_sample=true. This selects the current samples
+  and does not attach the other sample's columns. Never use allow_cross_sample on an inner or left join.
 - Translate the request literally. For "with a <slide/record>", use an inner join; do not pre-empt
   duplicates yourself. Cohort Studio checks every join and shows the user where counts inflate.
 - Only use columns that exist below. If the data can't express part of the request, say so in

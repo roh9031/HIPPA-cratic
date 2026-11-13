@@ -41,6 +41,25 @@ def test_patient_level_join_flags_cross_sample_links():
     assert not unresolved_problems(res2)
 
 
+def test_intentional_patient_level_match_allows_cross_sample_selection():
+    steps = load("trap_patient_level_survival")
+    steps[-1]["allow_cross_sample"] = True
+    _, res = run(steps)
+    assert "cross_sample" not in kinds(res[-1])
+
+
+def test_allow_cross_sample_must_be_boolean():
+    _, res = run([{"op": "join", "table": "survival", "on": "patient_id",
+                   "allow_cross_sample": "yes"}])
+    assert res[0].error and "allow_cross_sample must be true or false" in res[0].error
+
+
+def test_allow_cross_sample_requires_patient_existence_join():
+    _, res = run([{"op": "join", "table": "survival", "on": "patient_id",
+                   "how": "inner", "allow_cross_sample": True}])
+    assert res[0].error and "requires a semi or anti join" in res[0].error
+
+
 def test_unknown_column_is_reported_not_crashed():
     _, res = run([{"op": "filter", "where": [{"column": "er_status", "operator": "eq", "values": ["x"]}]}])
     assert res[-1].error and "doesn't exist" in res[-1].error
