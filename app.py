@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 
+import altair as alt
 import pandas as pd
 import streamlit as st
 
@@ -103,6 +104,35 @@ df, results = engine.run(steps)
 
 # ---------------------------------------------------------------- 3. funnel
 
+# Same chart st.bar_chart drew, with two changes: the x axis is pinned at 0 (st.bar_chart binds
+# pan/zoom to the scales, which let the axis be dragged into negative counts), and hovering a bar
+# shows the step's full label, which the axis has to truncate. Colours and the rest of the styling
+# come from Streamlit's own chart theme, so it looks like it did before.
+MEASURES = ["rows", "samples", "patients"]
+
+
+def funnel_chart(funnel: pd.DataFrame) -> "alt.Chart":
+    long = funnel.melt(id_vars=["step", "what"], value_vars=MEASURES,
+                       var_name="measure", value_name="count")
+    long["label"] = long["step"].astype(str) + " · " + long["what"]
+    order = list(dict.fromkeys(long["label"]))
+    return (
+        alt.Chart(long)
+        .mark_bar()
+        .encode(
+            y=alt.Y("label:N", sort=order, title=None),
+            yOffset=alt.YOffset("measure:N"),
+            x=alt.X("count:Q", title=None, scale=alt.Scale(domainMin=0, nice=True, clamp=True)),
+            color=alt.Color("measure:N", title=None,
+                            legend=alt.Legend(orient="bottom", direction="horizontal")),
+            tooltip=[alt.Tooltip("what:N", title="step"),
+                     alt.Tooltip("measure:N", title="counting"),
+                     alt.Tooltip("count:Q", title="count", format=",")],
+        )
+        .properties(height=90 * len(order) + 60)   # the bar thickness st.bar_chart used
+    )
+
+
 st.subheader("3 · What survives each step")
 funnel = pd.DataFrame([{
     "step": r.index, "what": r.label, "rows": r.rows, "samples": r.samples, "patients": r.patients,
@@ -111,8 +141,7 @@ funnel = pd.DataFrame([{
                                        else ("ℹ️ note" if r.warnings else "✅")),
 } for r in results])
 st.dataframe(funnel, hide_index=True, width="stretch")
-st.bar_chart(funnel.set_index(funnel["step"].astype(str) + " · " + funnel["what"].str[:40])[["rows", "samples", "patients"]],
-             stack=False, horizontal=True)
+st.altair_chart(funnel_chart(funnel), alt="Rows, samples and patients surviving each step")
 
 for r in results:
     if r.error:
