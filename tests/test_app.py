@@ -123,6 +123,19 @@ def test_switching_a_connector_to_or_widens_the_cohort():
     assert json.loads(at.session_state.steps_text)[0]["where"] == [{"any": steps[0]["where"]}]
 
 
+def test_a_click_on_a_step_that_no_longer_exists_is_ignored():
+    """Move/remove/add-condition clicks can land after `set_steps` renumbered the steps (an
+    example, "Apply fix", a JSON edit, or an old tab reconnecting). That must not crash the app."""
+    for button in ("up", "down", "del", "addc", "rmc"):
+        at = run_app()
+        uid = at.session_state.b_uids[1]
+        at.button(key=f"b_w_{uid}_{button}").click()
+        at.session_state.b_uids = [u for u in at.session_state.b_uids if u != uid]   # step is gone
+        at.run()
+        assert not at.exception, f"{button} on a step that's gone: {at.exception}"
+        assert counts(at)["Rows in table"] == "776"
+
+
 def test_json_view_preserves_patient_level_opt_in():
     at = run_app()
     steps = [

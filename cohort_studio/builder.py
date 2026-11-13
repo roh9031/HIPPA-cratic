@@ -128,14 +128,27 @@ def set_steps(steps) -> None:
     ss.b_json_error = None
 
 
+def _gone(uid: int) -> bool:
+    """A click can reach us after the step it belongs to is gone: the user loaded an example,
+    pressed "Apply fix" or edited the JSON (all call `set_steps`, which renumbers every step)
+    while a button press was in flight, or an old browser tab reconnected after a restart.
+    The step can't be moved or removed twice, so the click is ignored instead of crashing."""
+    return uid not in st.session_state.get("b_uids", [])
+
+
 def _move(uid: int, delta: int) -> None:
+    if _gone(uid):
+        return
     uids = st.session_state.b_uids
-    i, j = uids.index(uid), uids.index(uid) + delta
+    i = uids.index(uid)
+    j = i + delta
     if 0 <= j < len(uids):
         uids[i], uids[j] = uids[j], uids[i]
 
 
 def _remove(uid: int) -> None:
+    if _gone(uid):
+        return
     ss = st.session_state
     ss.b_uids.remove(uid)
     ss.b_steps.pop(uid, None)
@@ -152,10 +165,14 @@ def _add_step(op: str) -> None:
 
 
 def _add_cond(uid: int) -> None:
+    if _gone(uid):
+        return
     st.session_state.b_conds.setdefault(uid, []).append(_new_uid())
 
 
 def _remove_cond(uid: int) -> None:
+    if _gone(uid):
+        return
     cuids = st.session_state.b_conds.get(uid) or []
     if cuids:
         _drop_keys(f"{WIDGET_PREFIX}{uid}_{cuids.pop()}_")
