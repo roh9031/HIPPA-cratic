@@ -78,10 +78,7 @@ def validate_steps(steps) -> list[str]:
             errs.append(f"Step {i}: op must be one of {OPS}, got {op!r}.")
             continue
         for c in s.get("where", []) or []:
-            if c.get("operator") not in OPERATORS:
-                errs.append(f"Step {i}: operator must be one of {OPERATORS}, got {c.get('operator')!r}.")
-            if not c.get("column"):
-                errs.append(f"Step {i}: every condition needs a column.")
+            _validate_condition(c, i, errs)
         if op == "filter" and not s.get("where"):
             errs.append(f"Step {i}: a filter needs at least one condition in 'where'.")
         if op == "join":
@@ -119,6 +116,10 @@ def describe(step: dict) -> str:
 
 
 def _describe_cond(c: dict) -> str:
+    if "any" in c:
+        return "(" + " OR ".join(_describe_cond(nested) for nested in c["any"]) + ")"
+    if "all" in c:
+        return "(" + " AND ".join(_describe_cond(nested) for nested in c["all"]) + ")"
     op, vals = c["operator"], c.get("values") or []
     if op in ("notnull", "isnull"):
         return f"{c['column']} {'is present' if op == 'notnull' else 'is missing'}"
@@ -126,6 +127,23 @@ def _describe_cond(c: dict) -> str:
            "le": "≤", "startswith": "starts with", "contains": "contains"}[op]
     v = vals[0] if len(vals) == 1 and op not in ("in", "not_in") else vals
     return f"{c['column']} {sym} {v}"
+
+
+def _validate_condition(c: dict, step_index: int, errs: list[str]):
+    group = "any" if "any" in c else "all" if "all" in c else None
+    if group:
+        if not isinstance(c[group], list) or not c[group]:
+            errs.append(f"Step {step_index}: {group} must contain at least one condition.")
+        for nested in c.get(group, []):
+            if not isinstance(nested, dict):
+                errs.append(f"Step {step_index}: every any condition must be an object.")
+            else:
+                _validate_condition(nested, step_index, errs)
+        return
+    if c.get("operator") not in OPERATORS:
+        errs.append(f"Step {step_index}: operator must be one of {OPERATORS}, got {c.get('operator')!r}.")
+    if not c.get("column"):
+        errs.append(f"Step {step_index}: every condition needs a column.")
 
 
 def _mask(df: pd.DataFrame, cond: dict, where: str) -> pd.Series:
@@ -169,8 +187,22 @@ def _mask(df: pd.DataFrame, cond: dict, where: str) -> pd.Series:
 def _apply_where(df, where_list, where_name):
     m = pd.Series(True, index=df.index)
     for c in where_list or []:
-        m &= _mask(df, c, where_name)
+        m &= _condition_mask(df, c, where_name)
     return m
+
+
+def _condition_mask(df, condition, where_name):
+    if "any" in condition:
+        m = pd.Series(False, index=df.index)
+        for nested in condition["any"]:
+            m |= _condition_mask(df, nested, where_name)
+        return m
+    if "all" in condition:
+        m = pd.Series(True, index=df.index)
+        for nested in condition["all"]:
+            m &= _condition_mask(df, nested, where_name)
+        return m
+    return _mask(df, condition, where_name)
 
 
 def _prepare_right(df: pd.DataFrame, right: pd.DataFrame, table: str, on: str) -> pd.DataFrame:
@@ -239,7 +271,8 @@ def _filter(df, step):
 
 def _missing_value_warnings(df, where_list, where_name, cohort=None, on="sample_id"):
     warns = []
-    for c in where_list or []:
+    conditions = _leaf_conditions(where_list or [])
+    for c in conditions:
         if c["column"] not in df.columns or c["operator"] in ("isnull", "notnull"):
             continue
         missing = df[c["column"]].isna()
@@ -258,6 +291,18 @@ def _missing_value_warnings(df, where_list, where_name, cohort=None, on="sample_
             examples=affected[["sample_id", "patient_id"]].drop_duplicates().head(10).to_dict("records"),
         ))
     return warns
+
+
+def _leaf_conditions(conditions):
+    leaves = []
+    for condition in conditions:
+        if "any" in condition:
+            leaves.extend(_leaf_conditions(condition["any"]))
+        elif "all" in condition:
+            leaves.extend(_leaf_conditions(condition["all"]))
+        else:
+            leaves.append(condition)
+    return leaves
 
 
 def _join(df, step, i, steps, ddir):
@@ -318,10 +363,12 @@ def _redaction_check(df, right, table, on, step, i, steps) -> list[Warning_]:
     return [Warning_(
         "redacted", "info",
         f"{hit['sample_id'].nunique()} samples matched {table} records marked as redacted "
-        f"({', '.join(sorted(red['Redaction'].astype(str).unique()))}). Their values are still filled in, so "
-        f"they count as matches. Exclude them unless you know the redaction doesn't matter for your question.",
+        f"({', '.join(sorted(red['Redaction'].astype(str).unique()))}). They are **kept**: their values are filled "
+        f"in and sample_manifest.csv (the official sample list) marks them as having this data, which is the "
+        f"organizers' rule. A person should look at them before relying on their values.",
         examples=hit[["sample_id", "patient_id"]].drop_duplicates().head(10).to_dict("records"),
-        fixes=[{"label": f"Exclude redacted {table} records", "steps": _with_step(steps, i, where=where)}],
+        fixes=[{"label": f"Exclude redacted {table} records (only if your question requires it)",
+                "steps": _with_step(steps, i, where=where)}],
     )]
 
 

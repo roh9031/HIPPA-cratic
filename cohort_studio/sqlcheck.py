@@ -78,9 +78,37 @@ def _cond_sql(c: dict, alias: str = "") -> str:
     raise ValueError(f"unknown operator {op!r}")
 
 
+def _item_sql(item: dict, alias: str = "") -> str:
+    """One entry of a `where` list: a condition, or an OR group {"any": [conditions]} (GAPS.md #16)."""
+    if "any" in item:
+        parts = [_item_sql(c, alias) for c in item["any"] or []]
+        return "(" + " OR ".join(f"({p})" for p in parts) + ")" if parts else "FALSE"
+    if "all" in item:
+        parts = [_item_sql(c, alias) for c in item["all"] or []]
+        return "(" + " AND ".join(f"({p})" for p in parts) + ")" if parts else "TRUE"
+    return _cond_sql(item, alias)
+
+
 def _where_sql(where, alias="") -> str:
-    conds = [_cond_sql(c, alias) for c in where or []]
+    conds = [_item_sql(c, alias) for c in where or []]
     return " AND ".join(f"({c})" for c in conds) if conds else "TRUE"
+
+
+def _columns_in(where) -> list[str]:
+    """Every column a `where` list mentions, including inside OR groups, without repeats."""
+    out = []
+    for c in where or []:
+        out += _columns_in(c["any"]) if "any" in c else _columns_in(c["all"]) if "all" in c else [c["column"]]
+    return list(dict.fromkeys(out))
+
+
+def _describe(step: dict) -> str:
+    """The engine's plain-words label, or a fallback if the engine can't describe it yet (e.g. OR groups)."""
+    from .engine import describe
+    try:
+        return describe(step)
+    except (KeyError, TypeError):
+        return f"{step.get('op')} {step.get('table', '')}".strip()
 
 
 def _columns(con, view: str) -> list[str]:
@@ -89,7 +117,7 @@ def _columns(con, view: str) -> list[str]:
 
 def _ctes(steps: list[dict], con) -> str:
     """WITH s0 AS (...), s1 AS (...), ...: one CTE per step, s0 = all samples."""
-    from .engine import clean_step, describe
+    from .engine import clean_step
 
     # _ord remembers the manifest's row order: "collapse to one row per patient" keeps the first row, like the engine.
     ctes = ["s0 AS (  -- all samples (sample_manifest.csv)\n"
@@ -97,7 +125,7 @@ def _ctes(steps: list[dict], con) -> str:
     cols = _columns(con, "samples") + ["_ord"]
     for i, raw in enumerate(steps, 1):
         s = clean_step(raw)
-        prev, note = f"s{i - 1}", describe(s).replace("\n", " ")
+        prev, note = f"s{i - 1}", _describe(s).replace("\n", " ")
         if s["op"] == "filter":
             body = f"SELECT * FROM {prev} WHERE {_where_sql(s['where'])}"
         elif s["op"] == "collapse":
@@ -161,7 +189,7 @@ def verify(steps: list[dict], engine_df, results, ddir: str | None = None) -> di
 
 def trace(steps: list[dict], sample_id: str, ddir: str | None = None) -> dict:
     """Follow one sample through the steps (in SQL) and explain the step that removed it, with the values involved."""
-    from .engine import clean_step, describe
+    from .engine import clean_step
 
     sid = sample_id.strip().upper()
     con = connect(ddir)
@@ -186,10 +214,10 @@ def trace(steps: list[dict], sample_id: str, ddir: str | None = None) -> dict:
 
         s = clean_step(steps[gone - 1])
         prev = f"s{gone - 1}"
-        why = f"`{sid}` was removed at **step {gone}: {describe(s)}**."
+        why = f"`{sid}` was removed at **step {gone}: {_describe(s)}**."
         details = []
         if s["op"] == "filter":
-            cols = ", ".join(_q(c["column"]) for c in s["where"])
+            cols = ", ".join(_q(c) for c in _columns_in(s["where"]))
             details = _records(con, base + f"\nSELECT sample_id, {cols} FROM {prev} WHERE sample_id = {_lit(sid)}")
             why += " Its values for the condition columns are shown below; blank means missing."
         elif s["op"] == "collapse":
@@ -200,7 +228,7 @@ def trace(steps: list[dict], sample_id: str, ddir: str | None = None) -> dict:
         else:
             table, on, how = s["table"], s.get("on", "sample_id"), s.get("how", "inner")
             key = con.sql(base + f"\nSELECT {_q(on)} FROM {prev} WHERE sample_id = {_lit(sid)} LIMIT 1").fetchall()[0][0]
-            cols = ["sample_id"] + [c["column"] for c in s.get("where") or [] if c["column"] != "sample_id"]
+            cols = ["sample_id"] + [c for c in _columns_in(s.get("where")) if c != "sample_id"]
             allrec = _records(con, f"SELECT {', '.join(_q(c) for c in dict.fromkeys(cols))} FROM {table} "
                                    f"WHERE {_q(on)} = {_lit(key)}")
             ok = con.sql(f"SELECT count(*) FROM {table} WHERE {_q(on)} = {_lit(key)} "
@@ -221,3 +249,62 @@ def trace(steps: list[dict], sample_id: str, ddir: str | None = None) -> dict:
 def _records(con, sql: str) -> list[dict]:
     rel = con.sql(sql)
     return [dict(zip(rel.columns, row)) for row in rel.fetchall()]
+
+
+# ---------------------------------------------------------------- Data notes: where the source files disagree
+
+_PAM50 = "CASE PAM50Call_RNAseq WHEN 'LumA' THEN 'Luminal A' WHEN 'LumB' THEN 'Luminal B' WHEN 'Her2' THEN 'HER2-enriched' " \
+         "WHEN 'Basal' THEN 'Basal-like' WHEN 'Normal' THEN 'Normal-like' END"
+
+
+def data_notes(ddir: str | None = None) -> list[dict]:
+    """Facts about the frozen files a researcher should know, computed live. Each: title, detail, examples."""
+    con = connect(ddir)
+    try:
+        def one(sql):
+            return con.sql(sql).fetchall()[0]
+
+        def ids(sql):
+            return [r[0] for r in con.sql(sql + " ORDER BY 1 LIMIT 5").fetchall()]
+
+        notes = []
+        n, k = one("SELECT count(DISTINCT sample_id), count(*) FROM slides WHERE sample_id NOT IN (SELECT sample_id FROM samples)")
+        notes.append({
+            "title": f"{n} samples have slides but aren't in the sample manifest",
+            "detail": f"slide_manifest.csv lists {k} slides for {n} samples (normal tissue, barcode -11) that "
+                      f"sample_manifest.csv doesn't have. The sample manifest is the official list of samples, so "
+                      f"these are left out of every cohort (organizers' rule). Type one into \"Why isn't a sample in "
+                      f"my cohort?\" to see it explained.",
+            "examples": ids("SELECT DISTINCT sample_id FROM slides WHERE sample_id NOT IN (SELECT sample_id FROM samples)")})
+        n, t = one("SELECT count(*), count(*) FILTER (WHERE s.sample_type = 'Primary Tumor') FROM survival v "
+                   "JOIN samples s USING (sample_id) WHERE v.Redaction IS NOT NULL")
+        notes.append({
+            "title": f"{n} survival records are marked redacted but still have values",
+            "detail": f"{t} of them are primary tumors. The sample manifest marks them as having survival data, so "
+                      f"they are kept (organizers' rule), and the tool shows a note whenever they enter a cohort.",
+            "examples": ids("SELECT sample_id FROM survival WHERE Redaction IS NOT NULL")})
+        n = one("SELECT count(*) FROM clinical c JOIN survival v USING (sample_id) "
+                "WHERE (c.vital_status = 'DECEASED' AND v.OS = 0) OR (c.vital_status = 'LIVING' AND v.OS = 1)")[0]
+        notes.append({
+            "title": f"Vital status and overall survival disagree for {n} sample(s)",
+            "detail": "clinical.tsv `vital_status` vs survival.tsv `OS`. \"Patients who died\" depends on which one "
+                      "you use; our answer keys use `OS = 1` from the curated survival table.",
+            "examples": ids("SELECT sample_id FROM clinical c JOIN survival v USING (sample_id) WHERE "
+                            "(c.vital_status = 'DECEASED' AND v.OS = 0) OR (c.vital_status = 'LIVING' AND v.OS = 1)")})
+        n = one(f"SELECT count(*) FROM clinical WHERE PAM50Call_RNAseq IS NOT NULL AND PAM50_mRNA_nature2012 IS NOT NULL "
+                f"AND {_PAM50} IS DISTINCT FROM PAM50_mRNA_nature2012")[0]
+        notes.append({
+            "title": f"Two PAM50 subtype columns disagree for {n} samples",
+            "detail": "`PAM50Call_RNAseq` vs `PAM50_mRNA_nature2012` (where both have a call). Say which column a "
+                      "subtype cohort uses.",
+            "examples": ids(f"SELECT sample_id FROM clinical WHERE PAM50Call_RNAseq IS NOT NULL AND "
+                            f"PAM50_mRNA_nature2012 IS NOT NULL AND {_PAM50} IS DISTINCT FROM PAM50_mRNA_nature2012")})
+        n = one("SELECT count(*) FROM clinical WHERE gender IS NOT NULL AND Gender_nature2012 IS NOT NULL "
+                "AND gender <> Gender_nature2012")[0]
+        notes.append({
+            "title": f"Two gender columns disagree for {n} sample(s)",
+            "detail": "`gender` vs `Gender_nature2012`.",
+            "examples": ids("SELECT sample_id FROM clinical WHERE gender <> Gender_nature2012")})
+    finally:
+        con.close()
+    return notes

@@ -9,7 +9,7 @@ from pathlib import Path
 import pandas as pd
 import streamlit as st
 
-from cohort_studio import data, engine, export
+from cohort_studio import builder, data, engine, export
 
 st.set_page_config(page_title="Cohort Studio", layout="wide")
 
@@ -17,17 +17,17 @@ EXAMPLES = {p.stem: json.loads(p.read_text(encoding="utf-8")) for p in sorted(Pa
 DEFAULT = "demo_diagnostic_slides"
 
 ss = st.session_state
-if "steps_text" not in ss:
+if "request" not in ss:
     ex = EXAMPLES.get(DEFAULT, {"request": "", "steps": []})
-    ss.steps_text = json.dumps(ex["steps"], indent=2)
     ss.request = ex["request"]
     ss.ai_notes = None
+    builder.set_steps(ex["steps"])
 
 
 # ---------------------------------------------------------------- callbacks (run before the rerun)
 
-def set_steps(steps):
-    ss.steps_text = json.dumps(steps, indent=2)
+# Replaces every step at once: the examples, an AI draft and the "Apply fix" buttons all use this.
+set_steps = builder.set_steps
 
 
 def load_example(name):
@@ -93,16 +93,11 @@ if notes:
         if notes.get("cannot_answer"):
             st.error(f"The data can't answer part of this request: {notes['cannot_answer']}")
 
-st.subheader("2 · Edit the steps")
-st.caption("Steps are JSON. `filter` keeps rows · `join` adds a table (`inner`, `left`, `semi` = keep if a "
-           "match exists, `anti` = drop if it does) · `collapse` keeps one row per sample or patient.")
-st.text_area("Steps", key="steps_text", height=300, label_visibility="collapsed")
-
-try:
-    steps = json.loads(ss.steps_text)
-except json.JSONDecodeError as e:
-    st.error(f"The steps aren't valid JSON: {e}")
-    st.stop()
+st.subheader("2 · Build the steps")
+st.caption("`filter` keeps the samples that match · `join` brings in another table (and can repeat or drop "
+           "samples) · `collapse` keeps one row per sample or patient. Every count below is recomputed as "
+           "soon as a step changes.")
+steps = builder.render()
 
 df, results = engine.run(steps)
 
@@ -121,7 +116,9 @@ st.bar_chart(funnel.set_index(funnel["step"].astype(str) + " · " + funnel["what
 
 for r in results:
     if r.error:
-        st.error(f"**Step {r.index} failed:** {r.error}")
+        # Step 0 is the starting table, so an error there is about the step list as a whole.
+        st.error(f"**Step {r.index} failed:** {r.error}" if r.index else
+                 f"**These steps can't run:** {r.error}")
     for w_i, w in enumerate(r.warnings):
         box = st.error if w.severity == "problem" else st.info
         box(f"**Step {r.index} · {r.label}**\n\n{w.message}")
@@ -165,6 +162,22 @@ st.warning("**Human review required.** A person should confirm the steps match t
            "this cohort is used. **Limitation:** layer membership (`has_*`) comes from the sample manifest. "
            "This tool doesn't check the quality of values inside each layer, and it only joins the clinical, "
            "survival and slide tables.")
+
+
+@st.cache_data(show_spinner=False)
+def _data_notes():
+    from cohort_studio.sqlcheck import data_notes
+    return data_notes()
+
+
+try:
+    _notes = _data_notes()
+    with st.expander(f"Data notes: {len(_notes)} places where the source files disagree (checked live with DuckDB)"):
+        for n in _notes:
+            st.markdown(f"**{n['title']}.** {n['detail']}  \nExamples: " + ", ".join(f"`{e}`" for e in n["examples"]))
+except Exception as e:  # DuckDB missing or data not fetched: the rest of the page still works
+    st.caption(f"Data notes unavailable: {e}")
+
 
 def run_sql_check():
     try:

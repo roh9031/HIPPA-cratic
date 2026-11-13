@@ -136,7 +136,18 @@ CASES = [
         steps=[PRIMARY, {"op": "join", "table": "survival", "on": "sample_id", "how": "semi",
                          "where": [{"column": "OS.time", "operator": "notnull"},
                                    {"column": "Redaction", "operator": "isnull"}]}],
-        notes="GAPS.md #6.",
+        notes="Only when the user explicitly asks to exclude them. By default they stay in (next case). GAPS.md #6.",
+    ),
+    Case(
+        "survival_keeps_redacted",
+        "Primary tumors with overall survival data",
+        # Organizer rule (Discord, Nov 12): the sample manifest marks the 5 redacted primary tumors as having survival
+        # data, so they stay in the cohort. The tool flags them (info note) for a person to look at.
+        """SELECT sample_id FROM samples
+           WHERE sample_type = 'Primary Tumor'
+             AND sample_id IN (SELECT sample_id FROM survival WHERE "OS.time" IS NOT NULL)""",
+        steps=[PRIMARY, _semi("survival", [{"column": "OS.time", "operator": "notnull"}])],
+        notes="Includes the 5 redacted primary tumors. GAPS.md #6.",
     ),
     Case(
         "no_diagnostic_slide",
@@ -175,17 +186,19 @@ CASES = [
     Case(
         "tumor_with_normal_slide",
         "Primary tumors whose patient has a matched normal sample with a slide",
-        # Decision: the slide manifest is the authority on slides, so a slide with a normal barcode (-11) counts
-        # even when that normal sample is missing from sample_manifest (24 such samples). = 162.
-        # Counting only normals listed in the manifest gives 138. See gap #19.
+        # Organizer rule (Discord, Nov 12): sample_manifest.csv is the official list of samples; the slide manifest
+        # only describes slides. So the normal sample must be in the manifest AND have a slide = 138. The 24 normal
+        # samples that only appear in slide_manifest.csv are left out (counting them gave 162). See gap #19.
         """SELECT sample_id FROM samples
            WHERE sample_type = 'Primary Tumor'
-             AND patient_id IN (SELECT patient_id FROM slides WHERE substr(sample_id, 14, 2) = '11')""",
-        # This is an intentional patient-level existence check, not a row-level data join.
-        steps=[PRIMARY, {"op": "join", "table": "slides", "on": "patient_id", "how": "semi",
+             AND patient_id IN (SELECT n.patient_id FROM samples n
+                                WHERE n.sample_type = 'Solid Tissue Normal'
+                                  AND n.slides_for_sample > 0)""",
+        steps=[PRIMARY, {"op": "join", "table": "samples", "on": "patient_id", "how": "semi",
                          "allow_cross_sample": True,
-                         "where": [{"column": "sample_id", "operator": "contains", "values": ["-11"]}]}],
-        expected_n=162,
+                         "where": [{"column": "sample_type", "operator": "eq", "values": ["Solid Tissue Normal"]},
+                                   {"column": "slides_for_sample", "operator": "gt", "values": ["0"]}]}],
+        expected_n=138,
     ),
     Case(
         "tumor_with_matched_normal",
@@ -193,7 +206,6 @@ CASES = [
         """SELECT sample_id FROM samples
            WHERE sample_type = 'Primary Tumor'
              AND patient_id IN (SELECT patient_id FROM samples WHERE sample_type = 'Solid Tissue Normal')""",
-        # This is an intentional patient-level existence check, not a row-level data join.
         steps=[PRIMARY, {"op": "join", "table": "clinical", "on": "patient_id", "how": "semi",
                          "allow_cross_sample": True,
                          "where": [{"column": "sample_type", "operator": "eq", "values": ["Solid Tissue Normal"]}]}],
@@ -210,12 +222,14 @@ CASES = [
              AND sample_id IN (SELECT sample_id FROM clinical
                                WHERE lab_proc_her2_neu_immunohistochemistry_receptor_status = 'Positive'
                                   OR lab_procedure_her2_neu_in_situ_hybrid_outcome_type = 'Positive')""",
-        # Closest the engine can get: conditions are AND-only, so it can't say "IHC positive OR ISH positive".
         steps=[PRIMARY, {"op": "join", "table": "clinical", "on": "sample_id", "how": "semi",
-                         "where": [{"column": "lab_proc_her2_neu_immunohistochemistry_receptor_status",
-                                    "operator": "eq", "values": ["Positive"]}]}],
+                         "where": [{"any": [
+                             {"column": "lab_proc_her2_neu_immunohistochemistry_receptor_status",
+                              "operator": "eq", "values": ["Positive"]},
+                             {"column": "lab_procedure_her2_neu_in_situ_hybrid_outcome_type",
+                              "operator": "eq", "values": ["Positive"]},
+                         ]}]}],
         expected_n=197,
-        gap="#16",
     ),
     Case(
         "triple_negative",
@@ -234,15 +248,33 @@ CASES = [
                        AND coalesce(lab_procedure_her2_neu_in_situ_hybrid_outcome_type, '') <> 'Positive')
                    OR (coalesce(lab_proc_her2_neu_immunohistochemistry_receptor_status, '') <> 'Positive'
                        AND lab_procedure_her2_neu_in_situ_hybrid_outcome_type = 'Negative')))""",
-        # Most natural engine attempt: all three = Negative. Gives 116 (misses 44, wrongly includes 2) and no
-        # warning at all, because conditions inside a join skip the missing-value check (gap #18).
         steps=[PRIMARY, {"op": "join", "table": "clinical", "on": "sample_id", "how": "semi", "where": [
             {"column": "breast_carcinoma_estrogen_receptor_status", "operator": "eq", "values": ["Negative"]},
             {"column": "breast_carcinoma_progesterone_receptor_status", "operator": "eq", "values": ["Negative"]},
-            {"column": "lab_proc_her2_neu_immunohistochemistry_receptor_status", "operator": "eq", "values": ["Negative"]},
+            {"any": [
+                {"all": [
+                    {"column": "lab_proc_her2_neu_immunohistochemistry_receptor_status", "operator": "eq",
+                     "values": ["Negative"]},
+                    {"any": [
+                        {"column": "lab_procedure_her2_neu_in_situ_hybrid_outcome_type", "operator": "ne",
+                         "values": ["Positive"]},
+                        {"column": "lab_procedure_her2_neu_in_situ_hybrid_outcome_type", "operator": "isnull",
+                         "values": []},
+                    ]},
+                ]},
+                {"all": [
+                    {"any": [
+                        {"column": "lab_proc_her2_neu_immunohistochemistry_receptor_status", "operator": "ne",
+                         "values": ["Positive"]},
+                        {"column": "lab_proc_her2_neu_immunohistochemistry_receptor_status", "operator": "isnull",
+                         "values": []},
+                    ]},
+                    {"column": "lab_procedure_her2_neu_in_situ_hybrid_outcome_type", "operator": "eq",
+                     "values": ["Negative"]},
+                ]},
+            ]},
         ]}],
         expected_n=158,
-        gap="#16",
     ),
     # The data README quotes this number, so it's the most likely request a judge starts from.
     Case(

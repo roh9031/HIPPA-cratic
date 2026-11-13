@@ -2,7 +2,7 @@
 
 **User:** a researcher who needs a TCGA-BRCA cohort but doesn't write joins for a living.
 
-**Workflow they finish:** describe a cohort in plain English (or edit the steps directly), see how many
+**Workflow they finish:** describe a cohort in plain English (or build it from dropdowns), see how many
 rows, samples and patients survive every step, get told exactly where a join inflates the count or links
 a record to the wrong sample, fix it with one click, and export `cohort_samples.csv` plus a script that
 rebuilds the cohort.
@@ -38,12 +38,18 @@ streamlit run app.py                                         # the app
 python run_cohort.py examples/demo_diagnostic_slides.json    # same engine from the command line
 python run_cohort.py examples/demo_diagnostic_slides.json --verify --why TCGA-E2-A15E-01   # SQL check + trace one sample
 python run_cohort.py --ask "ER-positive primary tumors with a diagnostic slide"   # AI draft, needs ANTHROPIC_API_KEY
-pytest -q                                                    # checks the demo numbers
+python scripts/sql.py                                        # DuckDB SQL console over the raw files
+pytest -q                                                    # 100 tests, see below
 ```
 `run_cohort.py` exits with code 2 if the cohort still has duplicates or cross-sample links, and 3 if `--verify` finds
 the SQL version disagrees. **The demo example is the careless version on purpose**, so the command above prints
 `UNRESOLVED` and exits 2: that's the tool catching the inflated join. Its output files (`cohort_samples.csv`,
 `cohort.sql`) go in the current folder.
+
+`pytest -q` runs 100 tests (96 pass; 4 are known gaps marked as expected failures, listed in
+[docs/GAPS.md](docs/GAPS.md)): the demo numbers, **25 cohort requests checked against independent DuckDB SQL
+answer keys** (`tests/test_answer_key.py`, queries in [docs/TRAP_LOG.md](docs/TRAP_LOG.md)), the SQL check and
+sample trace (`tests/test_verify.py`), the exported rebuild script, and the app itself (`tests/test_app.py`).
 
 ## The demo
 Request: *primary tumors with both RNA and protein data and a diagnostic slide*.
@@ -61,6 +67,9 @@ A second example (`examples/trap_patient_level_survival.json`) joins survival on
 flags both the inflation and the 100 rows that attach another sample's record (normal tissue) to a tumor.
 
 ## How it works
+- `cohort_studio/builder.py`: the step builder in the app. Each step is a row of dropdowns (op → table →
+  column → value), so nobody has to write JSON; the JSON view is still there under “Advanced” and edits in
+  it load straight back into the builder. The value lists come from the cohort as it stands at that step.
 - `cohort_studio/engine.py`: a cohort is a JSON list of `filter` / `join` / `collapse` steps. After every
   step it checks: did rows grow faster than distinct samples? Did a patient-level join attach records from a
   different sample? Were samples dropped only because a value was missing? Each problem comes with fixes.
@@ -79,6 +88,9 @@ flags both the inflation and the 100 rows that attach another sample's record (n
   (steps, funnel, input checksums) and `rebuild_cohort.py`.
 
 ## Limitations (also shown in the app)
+- `sample_manifest.csv` is the official list of samples and of which data each has (the organizers' rule).
+  Samples that only appear in the slide manifest are left out; redacted survival records are kept and flagged.
+  The app's **Data notes** panel lists every such mismatch between the files, computed live.
 - Layer membership (`has_*`) comes from `sample_manifest.csv`. Values inside each layer aren't quality-checked.
 - Joinable tables: clinical, survival, slides. Mutation/RNA/protein values can't be filtered on yet.
 - A cohort is selected for research. Nothing here is a diagnosis, risk score or clinical claim.
@@ -86,4 +98,4 @@ flags both the inflation and the 100 rows that attach another sample's record (n
 ## Data and licenses
 TCGA-BRCA via UCSC Xena and NCI Imaging Data Commons (slides CC BY 3.0). See the challenge repo's
 `DATA_LICENSES.md`. No raw data is committed here. Third-party code: pandas (BSD-3), Streamlit (Apache-2.0),
-anthropic SDK (MIT), pytest (MIT).
+DuckDB (MIT), anthropic SDK (MIT), pytest (MIT).

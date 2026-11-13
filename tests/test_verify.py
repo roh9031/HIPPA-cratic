@@ -81,3 +81,74 @@ def test_numbers_match_by_value():
            "where": [{"column": "objective", "operator": "ne", "values": ["40.0"]}]}]
     df2, res2 = run(ne)
     assert verify(ne, df2, res2)["match"]
+
+
+# ---------------------------------------------------------------- Data notes (organizer rules, Nov 12)
+from cohort_studio.sqlcheck import data_notes  # noqa: E402
+
+
+def test_data_notes_point_out_file_mismatches():
+    titles = " | ".join(n["title"] for n in data_notes())
+    assert "24 samples have slides but aren't in the sample manifest" in titles
+    assert "6 survival records are marked redacted" in titles
+
+
+def test_orphan_normal_slides_never_enter_a_cohort():
+    # Organizer rule: sample_manifest.csv is the official sample list. Slides of samples missing from it can't join.
+    steps = [{"op": "join", "table": "slides", "on": "sample_id", "how": "inner"}]
+    df, _ = run(steps)
+    assert "TCGA-A7-A56D-11" not in set(df["sample_id"])
+
+
+def test_redacted_survival_records_are_kept_but_flagged():
+    # Organizer rule: keep them (the manifest says they have survival data), and flag them for review.
+    steps = [{"op": "filter", "where": [{"column": "sample_type", "operator": "in", "values": ["Primary Tumor"]}]},
+             {"op": "join", "table": "survival", "on": "sample_id", "how": "semi",
+              "where": [{"column": "OS.time", "operator": "notnull"}]}]
+    df, res = run(steps)
+    assert "TCGA-A7-A0DC-01" in set(df["sample_id"])
+    w = next(w for w in res[-1].warnings if w.kind == "redacted")
+    assert w.severity == "info" and "kept" in w.message
+
+
+# ---------------------------------------------------------------- OR groups {"any": [...]} (GAPS.md #16)
+# The SQL side is ready before the engine: these tests don't run the engine on OR steps.
+from cohort_studio.sqlcheck import connect, steps_to_sql  # noqa: E402
+
+_IHC = "lab_proc_her2_neu_immunohistochemistry_receptor_status"
+_ISH = "lab_procedure_her2_neu_in_situ_hybrid_outcome_type"
+_OR_HER2 = [{"op": "filter", "where": [{"column": "sample_type", "operator": "in", "values": ["Primary Tumor"]}]},
+            {"op": "join", "table": "clinical", "on": "sample_id", "how": "semi",
+             "where": [{"any": [{"column": _IHC, "operator": "eq", "values": ["Positive"]},
+                                {"column": _ISH, "operator": "eq", "values": ["Positive"]}]}]}]
+
+
+def test_sql_or_group_matches_her2_answer_key():
+    her2 = next(c for c in CASES if c.name == "her2_positive")
+    con = connect()
+    try:
+        con.sql("SET threads TO 1")
+        got = {r[0] for r in con.sql(steps_to_sql(_OR_HER2, con)).fetchall()}
+        assert got == {r[0] for r in con.sql(her2.sql).fetchall()} and len(got) == 197
+    finally:
+        con.close()
+
+
+def test_sql_or_group_is_bracketed_before_and():
+    # (IHC OR ISH) AND sample_type: without brackets SQL would read IHC OR (ISH AND ...).
+    steps = [{"op": "filter", "where": [{"any": [{"column": "sample_type", "operator": "eq", "values": ["Metastatic"]},
+                                                 {"column": "sample_type", "operator": "eq", "values": ["Solid Tissue Normal"]}]},
+                                        {"column": "has_rna", "operator": "eq", "values": ["True"]}]}]
+    con = connect()
+    try:
+        n = len(con.sql(steps_to_sql(steps, con)).fetchall())
+        expected = con.sql("SELECT count(*) FROM samples WHERE sample_type IN ('Metastatic', 'Solid Tissue Normal') "
+                           "AND has_rna").fetchall()[0][0]
+        assert n == expected
+    finally:
+        con.close()
+
+
+def test_trace_handles_or_groups():
+    t = trace(_OR_HER2, "TCGA-A7-A0DC-01")
+    assert t["status"] == "removed" and set(t["details"][0]) == {"sample_id", _IHC, _ISH}

@@ -14,9 +14,15 @@ from pathlib import Path
 import pandas as pd
 
 KEYS = ("sample_id", "patient_id")
+BASE_FILE = "sample_manifest.csv"
 
 # Tables a cohort can be joined to. "grain" = what one row is.
 TABLES = {
+    "samples": {
+        "file": BASE_FILE,
+        "grain": "sample",
+        "about": "Official sample manifest, one row per sample. Use for patient-level existence checks.",
+    },
     "clinical": {
         "file": "raw/clinical.tsv",
         "grain": "sample",
@@ -33,9 +39,6 @@ TABLES = {
         "about": "Pathology slides, several per sample. slide_kind is 'diagnostic (FFPE)' or 'frozen, ...'.",
     },
 }
-
-BASE_FILE = "sample_manifest.csv"
-
 
 def data_dir() -> Path:
     env = os.environ.get("ONCOSYS_DATA")

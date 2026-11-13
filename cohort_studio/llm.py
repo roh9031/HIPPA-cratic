@@ -25,6 +25,13 @@ _COND = {
     "required": ["column", "operator", "values"],
     "additionalProperties": False,
 }
+_WHERE_ITEM = {
+    "anyOf": [
+        _COND,
+        {"type": "object", "properties": {"any": {"type": "array", "items": _COND}},
+         "required": ["any"], "additionalProperties": False},
+    ]
+}
 
 SCHEMA = {
     "type": "object",
@@ -35,10 +42,11 @@ SCHEMA = {
                 "type": "object",
                 "properties": {
                     "op": {"type": "string", "enum": list(engine.OPS)},
-                    "where": {"anyOf": [{"type": "array", "items": _COND}, {"type": "null"}]},
+                    "where": {"anyOf": [{"type": "array", "items": _WHERE_ITEM}, {"type": "null"}]},
                     "table": {"anyOf": [{"type": "string", "enum": list(data.TABLES)}, {"type": "null"}]},
                     "on": {"anyOf": [{"type": "string", "enum": list(data.KEYS)}, {"type": "null"}]},
                     "how": {"anyOf": [{"type": "string", "enum": list(engine.JOIN_HOW)}, {"type": "null"}]},
+                    "allow_cross_sample": {"anyOf": [{"type": "boolean"}, {"type": "null"}]},
                     "level": {"anyOf": [{"type": "string", "enum": list(engine.LEVELS)}, {"type": "null"}]},
                 },
                 "required": ["op", "where", "table", "on", "how", "level"],
@@ -86,7 +94,8 @@ Step types (JSON):
   "allow_cross_sample":true|false,"where":[conditions on T]}
 - collapse: {"op":"collapse","level":"sample"|"patient"}
 Condition: {"column":C,"operator":OP,"values":[strings]}. Operators: in, not_in, eq, ne, gt, ge, lt, le,
-notnull, isnull (no values), startswith, contains. Use exact values listed in the schema below.
+notnull, isnull (no values), startswith, contains. Use {"any":[condition, condition]} for OR conditions.
+Use exact values listed in the schema below.
 Set unused fields to null.
 
 Rules:
