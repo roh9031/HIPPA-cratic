@@ -16,16 +16,21 @@ rebuilds the cohort.
 Clone this repo **next to** the challenge repo (or set `ONCOSYS_DATA` to its `data/tcga-brca` folder):
 ```
 oncosyshackathon/
-├── oncosys-hackathon-challenge/   # git clone https://github.com/disleveK/oncosys-hackathon-challenge.git
-└── cohort-studio/                 # this repo
+├── oncosys-hackathon-challenge/
+└── cohort-studio/
 ```
 ```bash
-cd oncosys-hackathon-challenge && python data/tcga-brca/fetch.py && cd ..
+mkdir oncosyshackathon && cd oncosyshackathon
+git clone https://github.com/disleveK/oncosys-hackathon-challenge.git
+git clone https://github.com/roh9031/HIPPA-cratic.git cohort-studio      # note: clone into "cohort-studio"
+cd oncosys-hackathon-challenge && python data/tcga-brca/fetch.py && cd ..   # downloads ~70 MB, checks checksums
 cd cohort-studio
 python -m venv .venv
 .venv\Scripts\activate          # macOS/Linux: source .venv/bin/activate
 pip install -r requirements.txt
 ```
+Windows: keep the folder path short (e.g. `D:\oncosyshackathon`). A very deep path can make `pip install` fail on
+the long-path limit. In `cmd`, switching drives needs `cd /d D:\oncosyshackathon`.
 
 ## Run
 ```bash
@@ -33,10 +38,18 @@ streamlit run app.py                                         # the app
 python run_cohort.py examples/demo_diagnostic_slides.json    # same engine from the command line
 python run_cohort.py examples/demo_diagnostic_slides.json --verify --why TCGA-E2-A15E-01   # SQL check + trace one sample
 python run_cohort.py --ask "ER-positive primary tumors with a diagnostic slide"   # AI draft, needs ANTHROPIC_API_KEY
-pytest -q                                                    # checks the demo numbers
+python scripts/sql.py                                        # DuckDB SQL console over the raw files
+pytest -q                                                    # 92 tests, see below
 ```
 `run_cohort.py` exits with code 2 if the cohort still has duplicates or cross-sample links, and 3 if `--verify` finds
-the SQL version disagrees.
+the SQL version disagrees. **The demo example is the careless version on purpose**, so the command above prints
+`UNRESOLVED` and exits 2: that's the tool catching the inflated join. Its output files (`cohort_samples.csv`,
+`cohort.sql`) go in the current folder.
+
+`pytest -q` runs 92 tests (88 pass; 4 are known gaps marked as expected failures, listed in
+[docs/GAPS.md](docs/GAPS.md)): the demo numbers, **25 cohort requests checked against independent DuckDB SQL
+answer keys** (`tests/test_answer_key.py`, queries in [docs/TRAP_LOG.md](docs/TRAP_LOG.md)), the SQL check and
+sample trace (`tests/test_verify.py`), the exported rebuild script, and the app itself (`tests/test_app.py`).
 
 ## The demo
 Request: *primary tumors with both RNA and protein data and a diagnostic slide*.
@@ -82,4 +95,4 @@ flags both the inflation and the 100 rows that attach another sample's record (n
 ## Data and licenses
 TCGA-BRCA via UCSC Xena and NCI Imaging Data Commons (slides CC BY 3.0). See the challenge repo's
 `DATA_LICENSES.md`. No raw data is committed here. Third-party code: pandas (BSD-3), Streamlit (Apache-2.0),
-anthropic SDK (MIT), pytest (MIT).
+DuckDB (MIT), anthropic SDK (MIT), pytest (MIT).

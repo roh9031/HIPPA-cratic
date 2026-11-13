@@ -7,3 +7,4 @@ cohort_samples.csv
 cohort.json
 rebuild_cohort.py
 data/
+cohort.sql

@@ -74,4 +74,4 @@ Each has a test.
 #22 "Verify with SQL" is in the app (section 4), with `tests/test_verify.py`. #23 "Why isn't sample X" is in section 3. Both also run from the command line (`--verify`, `--why`). #29 fixed. Trap backlog #5–#12 done (all pass).
 #21 the recommended fix is starred, explained and shown first (`cohort_studio/advice.py`, `tests/test_advice.py`).
 
-**Next, before the Friday feature freeze:** 2 → 3 (engine) · 4, 5 (in parallel, other roles) · the rest only if time allows.
+**Next, before the Friday feature freeze:** 16 and 2 (engine: 4 trap tests are waiting on them) → 18 → 3 (data) · 4 (AI eval) · 21 (recommended fix) · the rest only if time allows.
