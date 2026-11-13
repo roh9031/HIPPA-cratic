@@ -116,3 +116,15 @@ def test_bracketed_codes_are_unknown_for_not_equal():
     df = pd.DataFrame({"status": ["Positive", "Negative", "Indeterminate", "[Discrepancy]", None]})
     mask = _mask(df, {"column": "status", "operator": "ne", "values": ["Positive"]}, "test")
     assert mask.tolist() == [False, True, False, False, False]
+
+
+def test_mutation_anti_join_warns_about_unsequenced_samples_and_offers_fix():
+    steps = [PRIMARY, {"op": "join", "table": "mutation", "on": "sample_id", "how": "anti",
+                       "where": [{"column": "gene", "operator": "eq", "values": ["TP53"]}]}]
+    _, res = run(steps)
+    warning = next(w for w in res[-1].warnings if w.kind == "unsequenced_mutation")
+    assert "310" in warning.message
+    fix_steps = warning.fixes[0]["steps"]
+    _, fixed = run(fix_steps)
+    assert fixed[-1].samples == 527
+    assert not any(w.kind == "unsequenced_mutation" for r in fixed for w in r.warnings)

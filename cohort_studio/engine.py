@@ -31,7 +31,7 @@ class StepError(ValueError):
 
 @dataclass
 class Warning_:
-    kind: str              # inflation | cross_sample | missing_values | empty | multi_sample_patients | redacted
+    kind: str              # inflation | cross_sample | missing_values | empty | multi_sample_patients | redacted | unsequenced_mutation
     severity: str          # "problem" (must fix or justify) | "info"
     message: str
     examples: list[dict] = field(default_factory=list)
@@ -233,6 +233,12 @@ def _insert_after(steps, i, step):
     return new
 
 
+def _insert_before(steps, i, step):
+    new = copy.deepcopy(steps)
+    new.insert(i - 1, step)
+    return new
+
+
 # ---------------------------------------------------------------- run
 
 def run(steps: list[dict], ddir: str | None = None):
@@ -316,6 +322,21 @@ def _join(df, step, i, steps, ddir):
     allow_cross_sample = step.get("allow_cross_sample", False) and how in ("semi", "anti")
     right = data.load(table, ddir)
     warns = _missing_value_warnings(right, step.get("where"), f"table {table!r}", cohort=df, on=on)
+    if table == "mutation" and how == "anti" and "has_mutation" in df.columns:
+        unsequenced = df[~df["has_mutation"].astype(bool)]
+        if len(unsequenced):
+            warns.append(Warning_(
+                "unsequenced_mutation", "problem",
+                f"{unsequenced['sample_id'].nunique()} samples have no mutation sequencing record. "
+                "An anti-join keeps them because they cannot have a matching mutation row, so they must be "
+                "excluded before asking which sequenced samples lack this mutation.",
+                examples=unsequenced[["sample_id", "patient_id"]].drop_duplicates().head(10).to_dict("records"),
+                fixes=[{"label": "Add has_mutation = True before this step",
+                        "steps": _insert_before(steps, i, {
+                            "op": "filter",
+                            "where": [{"column": "has_mutation", "operator": "eq", "values": ["True"]}],
+                        })}],
+            ))
     right = right[_apply_where(right, step.get("where"), f"table {table!r}")]
     if how != "anti":
         warns += _redaction_check(df, right, table, on, step, i, steps)
