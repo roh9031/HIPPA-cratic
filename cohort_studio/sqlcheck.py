@@ -39,14 +39,18 @@ def connect(ddir: str | None = None):
     if not sample_columns or len(sample_columns) != len(set(sample_columns)):
         raise ValueError("mutation_gene_level.tsv.gz has no sample columns.")
     unpivot_columns = ", ".join(_q(column) for column in sample_columns)
+    # Explicit column types: letting DuckDB sniff this 792-column gzip made every connect() take ~3.5 s and
+    # every mutation query ~8 s. With the types given, connect is instant and a query takes ~2 s.
+    column_types = "{" + ", ".join(f"{_lit(c)}: 'VARCHAR'" for c in mutation_header) + "}"
     mutation_source = (
-        f"read_csv_auto({mutation_path}, delim='\\t', compression='gzip', all_varchar=true)"
+        f"read_csv({mutation_path}, delim='\\t', compression='gzip', header=true, auto_detect=false, "
+        f"columns={column_types})"
     )
     con.sql(f"""CREATE VIEW mutation AS
         SELECT sample_id, left(sample_id, 12) AS patient_id, sample AS gene, TRUE AS mutated
         FROM {mutation_source}
         UNPIVOT (mutation_value FOR sample_id IN ({unpivot_columns}))
-        WHERE TRY_CAST(mutation_value AS INTEGER) = 1
+        WHERE trim(mutation_value) = '1'
           AND sample_id IN (SELECT sample_id FROM samples)""")
     return con
 
@@ -76,11 +80,15 @@ def _cond_sql(c: dict, alias: str = "") -> str:
     col = f"{alias}{_q(c['column'])}"
     op = c["operator"]
     vals = [str(v).strip().lower() for v in (c.get("values") or [])]
-    text = f"lower(trim(CAST({col} AS VARCHAR)))"
+    raw = f"lower(trim(CAST({col} AS VARCHAR)))"
+    # Coded unknowns (`Indeterminate`, `[Discrepancy]`, `[Not Available]`...) count as missing (GAPS.md #7).
+    unknown = f"coalesce({raw} = 'indeterminate' OR ({raw} LIKE '[%' AND {raw} LIKE '%]'), FALSE)"
+    known = f"({col} IS NOT NULL AND NOT {unknown})"
+    text = f"CASE WHEN {unknown} THEN NULL ELSE {raw} END"
     if op == "notnull":
-        return f"{col} IS NOT NULL"
+        return known
     if op == "isnull":
-        return f"{col} IS NULL"
+        return f"NOT {known}"
     if op in ("gt", "ge", "lt", "le"):
         sym = {"gt": ">", "ge": ">=", "lt": "<", "le": "<="}[op]
         return f"TRY_CAST({col} AS DOUBLE) {sym} {float(vals[0])!r}"
@@ -90,7 +98,7 @@ def _cond_sql(c: dict, alias: str = "") -> str:
         nums = [repr(float(v)) for v in vals if _is_number(v)]
         if nums:  # numbers match by value too (40 = 40.0), same as the engine
             match = f"({match} OR TRY_CAST({text} AS DOUBLE) IN ({', '.join(nums)}))"
-        return match if op in ("in", "eq") else f"{col} IS NOT NULL AND NOT coalesce({match}, FALSE)"
+        return f"coalesce({match}, FALSE)" if op in ("in", "eq") else f"{known} AND NOT coalesce({match}, FALSE)"
     if op == "startswith":
         return "(" + " OR ".join(f"starts_with(coalesce({text}, ''), {_lit(v)})" for v in vals) + ")"
     if op == "contains":

@@ -15,13 +15,16 @@ problems with one-click fixes, and exports `cohort_samples.csv` (one row per 15-
 `cohort_samples.csv` with the right cohort.
 
 ## Code map
-- `cohort_studio/data.py`: loads `sample_manifest.csv` (base), `clinical`, `survival`, `slides` from
+- `cohort_studio/data.py`: loads `sample_manifest.csv` (base), `clinical`, `survival`, `mutation` (gene-level presence, one row per
+  mutated sample-gene; 791 sequenced samples = `has_mutation`), `slides` from
   `$ONCOSYS_DATA` or `../oncosys-hackathon-challenge/data/tcga-brca`. Gotcha: clinical.tsv's own `patient_id`
   is a 4-char suffix, so it's renamed `patient_suffix` and the real 12-char barcode is used.
 - `cohort_studio/engine.py`: steps are JSON (`filter` / `join` with how inner|left|semi|anti / `collapse`).
   `run()` returns the final df plus per-step results with warnings (inflation, cross_sample, missing_values,
   empty, multi_sample_patients, redacted) and fixes (each fix is a replacement step list). `eq`/`in`/`ne`/`not_in`
-  match numbers by value too (a float column reads 40 as 40.0).
+  match numbers by value too (a float column reads 40 as 40.0). `Indeterminate` and `[...]` codes count as
+  missing (GAPS #7); the SQL check mirrors this in `_cond_sql`. "Not mutated" needs `has_mutation = True`
+  first (GAPS #31: TP53 wild type 527, not 837).
 - `cohort_studio/llm.py`: optional Claude drafting (`claude-opus-5-5`, structured output, user-supplied key,
   server-side fallbacks). It sees only schema, never rows. Not yet tested with a real key.
 - `cohort_studio/advice.py`: which fix the UI stars (GAPS #21), with a reason and caveats on the others.
@@ -34,7 +37,7 @@ problems with one-click fixes, and exports `cohort_samples.csv` (one row per 15-
 - `cohort_studio/makeup.py`: after each step, TVD of site / PAM50 / ER / age-band mix before vs after (note at
   ≥ 0.10; a shift on a filtered attribute is "expected"). Demo protein step: site 0.14, PAM50 0.16.
 - `app.py`: Streamlit UI. `run_cohort.py`: CLI (`--verify`, `--why ID`, `--makeup`; exit 2 = unresolved problems, 3 = SQL
-  disagrees). `tests/`: pytest; `test_answer_key.py` holds 26 trap cases with SQL answer keys.
+  disagrees). `tests/`: pytest; `test_answer_key.py` holds 28 trap cases with SQL answer keys.
 
 ## Known-good numbers (demo)
 Primary tumor 1,101 → has RNA 1,097 → has protein 742 → join diagnostic slides = 776 rows / 731 samples (inflated)
@@ -51,6 +54,6 @@ All five data layers = 535; plus a diagnostic slide = 531 (572 rows if inner-joi
 ## Open TODOs
 - Test AI drafting on 5–10 requests; more trap examples and tests
 - OR groups (`{"any"/"all": [...]}`) and patient-level matching (`allow_cross_sample`) work in the engine,
-  the builder (and/or switch per condition; nested groups read-only) and the SQL check; all 26 trap cases pass. Next gaps in docs/GAPS.md
+  the builder (and/or switch per condition; nested groups read-only) and the SQL check; all 28 trap cases pass. Next gaps in docs/GAPS.md
 - More joinable tables (mutation/protein values); add the demo video link to the README
 - Run `pytest -q` and the app after every change

@@ -305,6 +305,20 @@ CASES = [
         notes="Uses the binary gene-level matrix; this identifies mutation presence, not a specific variant.",
     ),
     Case(
+        "tp53_wild_type_primary",
+        "Primary tumors without a TP53 mutation",
+        """SELECT sample_id FROM samples
+           WHERE sample_type = 'Primary Tumor' AND has_mutation
+             AND sample_id NOT IN (SELECT sample_id FROM mutation WHERE gene = 'TP53')""",
+        steps=[PRIMARY, {"op": "filter", "where": [{"column": "has_mutation", "operator": "eq", "values": ["True"]}]},
+               {"op": "join", "table": "mutation", "on": "sample_id", "how": "anti",
+                "where": [{"column": "gene", "operator": "eq", "values": ["TP53"]}]}],
+        expected_n=527,
+        # Trap (GAPS.md #31): the anti-join alone gives 837, because 310 primary tumors were never sequenced
+        # and so have no TP53 row either. "No mutation found" needs has_mutation first.
+        notes="Wild type = sequenced and no TP53 row. Without the has_mutation filter: 837.",
+    ),
+    Case(
         "all_five_layers_diagnostic_slide",
         "Primary tumors with all five data layers and a diagnostic slide",
         """SELECT sample_id FROM samples
