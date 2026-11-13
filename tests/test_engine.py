@@ -1,7 +1,9 @@
 import json
 from pathlib import Path
 
-from cohort_studio.engine import run, unresolved_problems
+import pandas as pd
+
+from cohort_studio.engine import _mask, run, unresolved_problems
 from cohort_studio.export import cohort_samples
 
 EX = Path(__file__).resolve().parents[1] / "examples"
@@ -98,3 +100,19 @@ def test_join_where_reports_missing_values():
     assert len(warnings) == 1
     assert "lab_procedure_her2_neu_in_situ_hybrid_outcome_type" in warnings[0].message
     assert warnings[0].examples
+
+
+def test_unknown_coded_values_do_not_match_not_equal():
+    steps = [PRIMARY, {"op": "join", "table": "clinical", "on": "sample_id", "how": "semi",
+                       "where": [{"column": "lab_proc_her2_neu_immunohistochemistry_receptor_status",
+                                  "operator": "ne", "values": ["Positive"]}]}]
+    _, res = run(steps)
+    warning = next(w for w in res[-1].warnings if w.kind == "missing_values")
+    assert "missing" in warning.message
+    assert res[-1].samples < 1101
+
+
+def test_bracketed_codes_are_unknown_for_not_equal():
+    df = pd.DataFrame({"status": ["Positive", "Negative", "Indeterminate", "[Discrepancy]", None]})
+    mask = _mask(df, {"column": "status", "operator": "ne", "values": ["Positive"]}, "test")
+    assert mask.tolist() == [False, True, False, False, False]

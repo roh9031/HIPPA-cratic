@@ -154,10 +154,11 @@ def _mask(df: pd.DataFrame, cond: dict, where: str) -> pd.Series:
         raise StepError(f"Column {col!r} doesn't exist in {where}.{hint}")
     s = df[col]
     vals = [str(v) for v in (cond.get("values") or [])]
+    unknown = _unknown_value_mask(s)
     if op == "notnull":
-        return s.notna()
+        return s.notna() & ~unknown
     if op == "isnull":
-        return s.isna()
+        return s.isna() | unknown
     if not vals:
         raise StepError(f"Operator {op!r} on {col!r} needs at least one value.")
     if op in ("gt", "ge", "lt", "le"):
@@ -167,7 +168,7 @@ def _mask(df: pd.DataFrame, cond: dict, where: str) -> pd.Series:
         except ValueError:
             raise StepError(f"{op!r} on {col!r} needs a number, got {vals[0]!r}.")
         return {"gt": num > x, "ge": num >= x, "lt": num < x, "le": num <= x}[op].fillna(False)
-    text = s.astype(str).str.strip().str.lower().where(s.notna(), None)
+    text = s.astype(str).str.strip().str.lower().where(s.notna() & ~unknown, None)
     lv = [v.strip().lower() for v in vals]
     if op in ("in", "eq", "not_in", "ne"):
         m = text.isin(lv)
@@ -176,12 +177,17 @@ def _mask(df: pd.DataFrame, cond: dict, where: str) -> pd.Series:
         if len(nums):
             m = m | pd.to_numeric(text, errors="coerce").isin(list(nums))
         if op in ("not_in", "ne"):
-            m = ~m & s.notna()
+            m = ~m & s.notna() & ~unknown
     elif op == "startswith":
         m = text.fillna("").str.startswith(tuple(lv))
     elif op == "contains":
         m = text.fillna("").apply(lambda t: any(v in t for v in lv))
     return m.astype(bool)
+
+
+def _unknown_value_mask(s: pd.Series) -> pd.Series:
+    text = s.astype(str).str.strip().str.lower()
+    return text.eq("indeterminate") | text.str.startswith("[") & text.str.endswith("]")
 
 
 def _apply_where(df, where_list, where_name):
@@ -275,7 +281,7 @@ def _missing_value_warnings(df, where_list, where_name, cohort=None, on="sample_
     for c in conditions:
         if c["column"] not in df.columns or c["operator"] in ("isnull", "notnull"):
             continue
-        missing = df[c["column"]].isna()
+        missing = df[c["column"]].isna() | _unknown_value_mask(df[c["column"]])
         if not missing.any():
             continue
         affected = df.loc[missing]
@@ -286,7 +292,7 @@ def _missing_value_warnings(df, where_list, where_name, cohort=None, on="sample_
         action = "were dropped" if cohort is None else "may be affected"
         warns.append(Warning_(
             "missing_values", "info",
-            f"{n_s} samples {action} because `{c['column']}` is missing for them, not because "
+            f"{n_s} samples {action} because `{c['column']}` is missing or coded as unknown for them, not because "
             f"they failed the condition. Decide whether that's acceptable.",
             examples=affected[["sample_id", "patient_id"]].drop_duplicates().head(10).to_dict("records"),
         ))
