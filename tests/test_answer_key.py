@@ -193,7 +193,9 @@ CASES = [
            WHERE sample_type = 'Primary Tumor'
              AND patient_id IN (SELECT n.patient_id FROM samples n
                                 WHERE n.sample_type = 'Solid Tissue Normal'
-                                  AND n.slides_for_sample > 0)""",
+                                  AND n.sample_id IN (SELECT sample_id FROM slides))""",
+        # The steps use the manifest's slides_for_sample; the key checks slide_manifest.csv instead (both 138),
+        # so the answer key stays independent of the column the engine relies on.
         steps=[PRIMARY, {"op": "join", "table": "samples", "on": "patient_id", "how": "semi",
                          "allow_cross_sample": True,
                          "where": [{"column": "sample_type", "operator": "eq", "values": ["Solid Tissue Normal"]},

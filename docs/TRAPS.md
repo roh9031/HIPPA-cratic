@@ -33,11 +33,11 @@ Tables in the console: `samples` (one row per sample, the cohort base), `slides`
 | RNA but no diagnostic slide | 38 | ✅ |
 | All primary tumors, left-joined to slides + collapse | 1,101 | ✅ |
 | OS data excluding redacted records | — | ✅ |
-| **Primary tumors whose patient also has a matched normal** (worked example) | 139 | ❌ xfail, gap #2 |
-| **HER2-positive primary tumors** (IHC or ISH positive) | 197 | ❌ xfail, gap #16 (no OR). Also #17: 3 columns disagree |
+| **Primary tumors whose patient also has a matched normal** (worked example) | 139 | ✅ passes since #2 was fixed (`allow_cross_sample`) |
+| **HER2-positive primary tumors** (IHC or ISH positive) | 197 | ✅ passes since OR (#16) was added. Also #17: 3 columns disagree |
 | **Diagnostic slides, naive patient_id join** | 1,061 | ✅ passes (engine flags it, fix is correct) |
 | **Frozen slides, naive patient_id inner join** | 1,093 | ✅ passes (inflation + 406 cross-sample rows flagged) |
-| **Tumors with a matched normal that has a slide** | 138 | ❌ xfail, gap #2. Was 162 before the organizers ruled that only manifest samples count (#19) |
+| **Tumors with a matched normal that has a slide** | 138 | ✅ passes (samples table + `allow_cross_sample`). Was 162 before the organizers ruled that only manifest samples count (#19) |
 | **Primary tumors with OS data (redacted kept)** | — | ✅ organizer rule: keep redacted rows, flag them (#6) |
 | **All five data layers** (number quoted in the data README) | 535 | ✅ passes |
 | **All five layers + a diagnostic slide** (naive inner join: 572 rows / 531 samples) | 531 | ✅ passes (inflation flagged, semi fix correct) |
@@ -50,7 +50,7 @@ Tables in the console: `samples` (one row per sample, the cohort base), `slides`
 | **No survival record** (anti-join) | 4 | ✅ |
 | **All tumor samples** (incl. 7 metastatic) | 1,108 | ✅ (`contains tumor` gives 1,101: wording trap, gap #8) |
 | **One tumor per patient, prefer primary** | 1,101 | ✅ but only because the manifest lists primaries first (gap #9) |
-| **Triple-negative primary tumors** | 158 | ❌ xfail, gap #16. Also found #18 (no warnings in joins), confirmed #7 |
+| **Triple-negative primary tumors** | 158 | ✅ passes since OR (#16). Also found #18 (no warnings in joins), confirmed #7 |
 
 Every query behind these answers is in [TRAP_LOG.md](TRAP_LOG.md).
 
