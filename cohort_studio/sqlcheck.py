@@ -11,6 +11,8 @@ Views (one per file, keys renamed to sample_id / patient_id):
 """
 from __future__ import annotations
 
+import csv
+import gzip
 from pathlib import Path
 
 from . import data
@@ -28,6 +30,24 @@ def connect(ddir: str | None = None):
     # clinical.tsv's own patient_id is a 4-char suffix; the real key is the sample barcode.
     con.sql(f"CREATE VIEW clinical AS SELECT sampleID AS sample_id, left(sampleID, 12) AS patient_id, "
             f"* EXCLUDE (patient_id) FROM read_csv('{d}/raw/clinical.tsv', delim='\t', all_varchar=true)")
+    mutation_path = _lit(f"{d}/raw/mutation_gene_level.tsv.gz")
+    with gzip.open(Path(d) / "raw" / "mutation_gene_level.tsv.gz", "rt", encoding="utf-8", newline="") as f:
+        mutation_header = next(csv.reader(f, delimiter="\t"), None)
+    if not mutation_header or mutation_header[0] != "sample":
+        raise ValueError("mutation_gene_level.tsv.gz must have a first column named 'sample'.")
+    sample_columns = mutation_header[1:]
+    if not sample_columns or len(sample_columns) != len(set(sample_columns)):
+        raise ValueError("mutation_gene_level.tsv.gz has no sample columns.")
+    unpivot_columns = ", ".join(_q(column) for column in sample_columns)
+    mutation_source = (
+        f"read_csv_auto({mutation_path}, delim='\\t', compression='gzip', all_varchar=true)"
+    )
+    con.sql(f"""CREATE VIEW mutation AS
+        SELECT sample_id, left(sample_id, 12) AS patient_id, sample AS gene, TRUE AS mutated
+        FROM {mutation_source}
+        UNPIVOT (mutation_value FOR sample_id IN ({unpivot_columns}))
+        WHERE TRY_CAST(mutation_value AS INTEGER) = 1
+          AND sample_id IN (SELECT sample_id FROM samples)""")
     return con
 
 

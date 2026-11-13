@@ -58,6 +58,19 @@ def test_trace_explains_a_filter_drop_with_the_value():
     assert t["removed_at"] == 1 and t["details"][0]["sample_type"] == "Solid Tissue Normal"
 
 
+def test_trace_handles_gene_mutation_join():
+    case = next(c for c in CASES if c.name == "tp53_mutated_primary")
+    con = connect()
+    try:
+        sample_id = con.sql(case.sql).fetchall()[0][0]
+    finally:
+        con.close()
+
+    t = trace(case.steps, sample_id)
+    assert t["status"] == "in_cohort"
+    assert t["path"][-1]["rows for this sample"] == 1
+
+
 def test_trace_sample_in_cohort_and_unknown_and_orphan():
     assert trace(FIXED_DEMO, "TCGA-A7-A0DC-01")["status"] == "in_cohort"
     assert trace(FIXED_DEMO, "TCGA-XX-0000-01")["status"] == "not_in_manifest"

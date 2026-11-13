@@ -95,11 +95,13 @@ Step types (JSON):
 - collapse: {"op":"collapse","level":"sample"|"patient"}
 Condition: {"column":C,"operator":OP,"values":[strings]}. Operators: in, not_in, eq, ne, gt, ge, lt, le,
 notnull, isnull (no values), startswith, contains. Use {"any":[condition, condition]} for OR conditions.
-Use exact values listed in the schema below.
+Use exact category values listed in the schema below.
 Set unused fields to null.
 
 Rules:
 - Use the base table's has_* flags for "has RNA / protein / mutation / copy number / survival data".
+- For "GENE-mutated" requests, semi-join `mutation` on sample_id with gene = GENE and mutated = true.
+  The gene column's example is not an exhaustive list; this matrix reports gene-level presence, not variant details.
 - To filter on a clinical field, first join `clinical` on sample_id, then filter.
 - For an intentional patient-level existence request (for example, tumors whose patient has a normal
   sample), use a semi-join on patient_id with allow_cross_sample=true. This selects the current samples

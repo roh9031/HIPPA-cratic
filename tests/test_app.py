@@ -68,6 +68,21 @@ def test_builder_dropdown_changes_the_cohort():
     assert json.loads(at.session_state.steps_text)[-1]["how"] == "semi"
 
 
+def test_builder_can_select_gene_mutation_table():
+    at = run_app()
+    steps = [
+        {"op": "filter", "where": [{"column": "sample_type", "operator": "eq", "values": ["Primary Tumor"]}]},
+        {"op": "join", "table": "mutation", "on": "sample_id", "how": "semi",
+         "where": [{"column": "gene", "operator": "eq", "values": ["TP53"]}]},
+    ]
+    at.text_area(key="steps_text").set_value(json.dumps(steps)).run()
+
+    join_uid = at.session_state.b_uids[-1]
+    assert at.selectbox(key=f"b_w_{join_uid}_table").value == "mutation"
+    assert counts(at)["Rows in table"] == counts(at)["Samples"]
+    assert int(counts(at)["Samples"]) > 0
+
+
 def test_removing_a_step_keeps_the_other_steps_intact():
     at = run_app()
     protein_uid = at.session_state.b_uids[2]          # filter: has_protein

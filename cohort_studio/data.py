@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import csv
 import functools
+import gzip
 import hashlib
 import os
 from pathlib import Path
@@ -32,6 +33,11 @@ TABLES = {
         "file": "raw/survival.tsv",
         "grain": "sample",
         "about": "Curated survival (OS, DSS, DFI, PFI and their .time columns), one row per sample.",
+    },
+    "mutation": {
+        "file": "raw/mutation_gene_level.tsv.gz",
+        "grain": "sample-gene",
+        "about": "Gene-level mutation presence, one row per mutated sample-gene pair.",
     },
     "slides": {
         "file": "slide_manifest.csv",
@@ -107,6 +113,36 @@ def _load(name: str, ddir: str | None) -> pd.DataFrame:
         df.insert(1, "patient_id", df["sample_id"].str[:12])
     elif name == "survival":
         df = pd.read_csv(path, sep="\t").rename(columns={"sample": "sample_id", "_PATIENT": "patient_id"})
+    elif name == "mutation":
+        manifest = _load("samples", ddir)
+        patients = dict(zip(manifest["sample_id"].astype(str), manifest["patient_id"].astype(str)))
+        records = []
+        seen_genes = set()
+        with gzip.open(path, "rt", encoding="utf-8", newline="") as f:
+            reader = csv.reader(f, delimiter="\t")
+            header = next(reader, None)
+            if not header or header[0] != "sample":
+                raise ValueError(f"{path} must have a first column named 'sample' (the gene symbol).")
+            sample_ids = header[1:]
+            if not sample_ids or len(sample_ids) != len(set(sample_ids)):
+                raise ValueError(f"{path} must contain unique sample barcode columns.")
+            for line_number, row in enumerate(reader, start=2):
+                if len(row) != len(header):
+                    raise ValueError(f"{path} line {line_number} has {len(row)} cells; expected {len(header)}.")
+                gene = row[0].strip()
+                if not gene or gene in seen_genes:
+                    raise ValueError(f"{path} line {line_number} has a blank or duplicate gene symbol: {gene!r}.")
+                seen_genes.add(gene)
+                for sample_id, value in zip(sample_ids, row[1:]):
+                    if value == "1":
+                        patient_id = patients.get(sample_id)
+                        if patient_id is not None:
+                            records.append((sample_id, patient_id, gene, True))
+                    elif value != "0":
+                        raise ValueError(
+                            f"{path} line {line_number} has unexpected mutation value {value!r} for {gene}."
+                        )
+        return pd.DataFrame(records, columns=["sample_id", "patient_id", "gene", "mutated"])
     else:
         df = pd.read_csv(path)
     return df
