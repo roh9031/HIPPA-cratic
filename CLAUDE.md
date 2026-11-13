@@ -48,6 +48,6 @@ All five data layers = 535; plus a diagnostic slide = 531 (572 rows if inner-joi
 ## Open TODOs
 - Test AI drafting on 5–10 requests; more trap examples and tests
 - OR groups (`{"any"/"all": [...]}`) and patient-level matching (`allow_cross_sample`) work in the engine,
-  the builder (read-only groups) and the SQL check; all 26 trap cases pass. Next gaps in docs/GAPS.md
+  the builder (and/or switch per condition; nested groups read-only) and the SQL check; all 26 trap cases pass. Next gaps in docs/GAPS.md
 - More joinable tables (mutation/protein values); fill in README team names and demo video
 - Run `pytest -q` and the app after every change
