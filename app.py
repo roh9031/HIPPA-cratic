@@ -166,6 +166,43 @@ for r in results:
                 if why:
                     st.caption(f"**Recommended.** {why}" if best else why)
 
+
+# ---- did a step change *who* is in the cohort? (docs/GAPS.md #20, #27)
+@st.cache_data(show_spinner=False)
+def _makeup(steps_json: str):
+    from cohort_studio.makeup import makeup_shifts
+    return makeup_shifts(json.loads(steps_json))
+
+
+if not any(r.error for r in results):
+    try:
+        from cohort_studio.makeup import SHIFT_TVD, describe_shift
+        shifts = _makeup(json.dumps(steps, sort_keys=True))
+        flagged = [e for e in shifts if e["flagged"]]
+        with st.container(border=True):
+            st.markdown("**Did a step change who's in the cohort?** For every step that removed samples, the mix of "
+                        "submitting site, PAM50 subtype, ER status and age band before vs after "
+                        f"(total variation distance; a note at {SHIFT_TVD:.2f} or more).")
+            for e in flagged:
+                st.info(describe_shift(e))
+            if not flagged:
+                st.success("No step shifted the cohort's makeup noticeably.")
+            with st.expander("Details for every step"):
+                rows = [{"step": e["step"], "samples": f"{e['before']:,} → {e['after']:,}",
+                         **{s["attribute"]: f"{s['tvd']:.2f}" + (" (filtered on)" if s["expected"] else "")
+                            for s in e["shifts"]}} for e in shifts]
+                if rows:
+                    st.dataframe(pd.DataFrame(rows), hide_index=True)
+                for e in shifts:
+                    if not e["flagged"]:
+                        st.caption(describe_shift(e))
+                st.caption("A shift isn't an error: it means the cohort that's left is a different population, "
+                           "which a person should keep in mind. \"Filtered on\" shifts are expected.")
+    except ImportError:
+        pass  # DuckDB missing: the rest of the page still works
+    except Exception as e:
+        st.caption(f"Makeup check unavailable: {e}")
+
 with st.container(border=True):
     st.markdown("**Why isn't a sample in my cohort?** Type a sample ID to see which step removed it and why.")
     sid = st.text_input("Sample ID", key="trace_id", placeholder="e.g. TCGA-E2-A15E-01",

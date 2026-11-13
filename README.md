@@ -37,16 +37,17 @@ the long-path limit. In `cmd`, switching drives needs `cd /d D:\oncosyshackathon
 streamlit run app.py                                         # the app
 python run_cohort.py examples/demo_diagnostic_slides.json    # same engine from the command line
 python run_cohort.py examples/demo_diagnostic_slides.json --verify --why TCGA-E2-A15E-01   # SQL check + trace one sample
+python run_cohort.py examples/demo_diagnostic_slides.json --makeup   # did a step change who's in the cohort?
 python run_cohort.py --ask "ER-positive primary tumors with a diagnostic slide"   # AI draft, needs ANTHROPIC_API_KEY
 python scripts/sql.py                                        # DuckDB SQL console over the raw files
-pytest -q                                                    # 129 tests, see below
+pytest -q                                                    # 134 tests, see below
 ```
 `run_cohort.py` exits with code 2 if the cohort still has duplicates or cross-sample links, and 3 if `--verify` finds
 the SQL version disagrees. **The demo example is the careless version on purpose**, so the command above prints
 `UNRESOLVED` and exits 2: that's the tool catching the inflated join. Its output files (`cohort_samples.csv`,
 `cohort.sql`) go in the current folder.
 
-`pytest -q` runs 129 tests, all passing (known gaps are listed in [docs/GAPS.md](docs/GAPS.md)): the demo numbers, **25 cohort requests checked against independent DuckDB SQL
+`pytest -q` runs 134 tests, all passing (known gaps are listed in [docs/GAPS.md](docs/GAPS.md)): the demo numbers, **25 cohort requests checked against independent DuckDB SQL
 answer keys** (`tests/test_answer_key.py`, queries in [docs/TRAP_LOG.md](docs/TRAP_LOG.md)), the SQL check and
 sample trace (`tests/test_verify.py`), the exported rebuild script, the recommended-fix and version-compare logic, and the app itself (`tests/test_app.py`).
 
@@ -84,6 +85,10 @@ flags both the inflation and the 100 rows that attach another sample's record (n
   not that they match the research question.
   The **Why isn't a sample in my cohort?** box traces one sample ID through the same per-step SQL and names the
   step that removed it, with the values involved.
+- `cohort_studio/makeup.py`: **Did a step change who's in the cohort?** For every step that removes samples, the
+  mix of submitting site, PAM50 subtype, ER status and age band before vs after (total variation distance). A
+  shift of 0.10 or more gets a plain-words note, e.g. requiring protein data shifts the site mix (TVD 0.14) and
+  the PAM50 mix (0.16). A shift on something the step itself filters on is labelled expected.
 - `cohort_studio/export.py`: `cohort_samples.csv` (one row per 15-character `sample_id`), `cohort.json`
   (steps, funnel, input checksums) and `rebuild_cohort.py`.
 

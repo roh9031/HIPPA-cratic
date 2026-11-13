@@ -30,7 +30,9 @@ problems with one-click fixes, and exports `cohort_samples.csv` (one row per 15-
   under “Advanced” round-trips). Only produces the step JSON above.
 - `cohort_studio/sqlcheck.py`: DuckDB views over the raw files (`connect()`), the steps→SQL translator behind
   the app's **Verify with SQL** (`verify()`), and **Why isn't sample X** (`trace()`). `scripts/sql.py`: SQL console.
-- `app.py`: Streamlit UI. `run_cohort.py`: CLI (`--verify`, `--why ID`; exit 2 = unresolved problems, 3 = SQL
+- `cohort_studio/makeup.py`: after each step, TVD of site / PAM50 / ER / age-band mix before vs after (note at
+  ≥ 0.10; a shift on a filtered attribute is "expected"). Demo protein step: site 0.14, PAM50 0.16.
+- `app.py`: Streamlit UI. `run_cohort.py`: CLI (`--verify`, `--why ID`, `--makeup`; exit 2 = unresolved problems, 3 = SQL
   disagrees). `tests/`: pytest; `test_answer_key.py` holds 26 trap cases with SQL answer keys.
 
 ## Known-good numbers (demo)

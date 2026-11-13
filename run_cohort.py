@@ -5,6 +5,7 @@
   python run_cohort.py --ask "primary tumors with a diagnostic slide"   (needs ANTHROPIC_API_KEY)
   python run_cohort.py examples/demo_diagnostic_slides.json --verify     also check it with SQL; writes cohort.sql
   python run_cohort.py examples/demo_diagnostic_slides.json --why TCGA-E2-A15E-01   which step removed a sample
+  python run_cohort.py examples/demo_diagnostic_slides.json --makeup     did a step change who's in the cohort?
 
 Exit code 2 means the cohort still has an unresolved problem (duplicates or cross-sample links).
 Exit code 3 means --verify found that the SQL version disagrees with the engine.
@@ -22,7 +23,15 @@ def main():
     ap.add_argument("--out", default="cohort_samples.csv")
     ap.add_argument("--verify", action="store_true", help="Rebuild the cohort in DuckDB SQL and compare; writes cohort.sql")
     ap.add_argument("--why", metavar="SAMPLE_ID", help="Explain which step removed this sample")
+    ap.add_argument("--makeup", action="store_true",
+                    help="Compare site / PAM50 / ER / age mix before and after each step")
     a = ap.parse_args()
+    # Labels use →, ≠, ≥. Windows consoles and redirected output default to cp1252, which can't print them.
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, ValueError):
+            pass
 
     request = ""
     if a.ask:
@@ -59,6 +68,11 @@ def main():
         print("\nWHY:", t["why"].replace("**", "").replace("`", ""))
         for d in t["details"]:
             print("      ", d)
+    if a.makeup:
+        from cohort_studio.makeup import describe_shift, makeup_shifts
+        print("\nMAKEUP (did a step change who's in the cohort?):")
+        for e in makeup_shifts(steps):
+            print(("  [shift] " if e["flagged"] else "          ") + describe_shift(e))
     sql_ok = True
     if a.verify:
         from cohort_studio.sqlcheck import verify
