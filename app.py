@@ -9,7 +9,7 @@ from pathlib import Path
 import pandas as pd
 import streamlit as st
 
-from cohort_studio import advice, builder, data, engine, export
+from cohort_studio import advice, builder, data, engine, export, versions
 
 st.set_page_config(page_title="Cohort Studio", layout="wide")
 
@@ -165,6 +165,34 @@ m1.metric("Samples", f"{final.samples:,}")
 m2.metric("Patients", f"{final.patients:,}")
 m3.metric("Rows in table", f"{final.rows:,}", delta=f"+{final.extra_rows} duplicates" if final.extra_rows else None,
           delta_color="inverse")
+
+# ---- compare this cohort with an earlier one from this session (docs/GAPS.md #26)
+history = versions.record(steps, df) if not any(r.error for r in results) else st.session_state.get("versions", [])
+earlier = [v for v in history[1:]]
+if earlier:
+    with st.expander(f"Compare with an earlier version ({len(earlier)} to choose from)"):
+        st.caption("Every set of steps you have run in this session is kept here, newest first. Nothing is saved "
+                   "to disk.")
+        # Options are version numbers, not the dicts: a version can leave this list (it became the
+        # current cohort, or aged out), and a stale selection would break the widget.
+        by_number = {v["n"]: v for v in earlier}
+        if ss.get("compare_with") not in by_number:
+            ss.pop("compare_with", None)
+        pick = by_number[st.selectbox("Compare the cohort above with", list(by_number), key="compare_with",
+                                      format_func=lambda n: by_number[n]["label"])]
+        d = versions.compare(history[0], pick)
+        st.markdown(versions.summary(d))
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Rows", f"{d['rows'][1]:,}", delta=f"{d['rows'][1] - d['rows'][0]:+,}", delta_color="off")
+        c2.metric("Samples", f"{d['samples'][1]:,}", delta=f"{d['samples'][1] - d['samples'][0]:+,}",
+                  delta_color="off")
+        c3.metric("Patients", f"{d['patients'][1]:,}", delta=f"{d['patients'][1] - d['patients'][0]:+,}",
+                  delta_color="off")
+        moved = versions.diff_table(d)
+        if len(moved):
+            st.dataframe(moved, hide_index=True, height=240)
+            st.download_button("cohort_diff.csv", moved.to_csv(index=False), "cohort_diff.csv", "text/csv")
+        st.caption(f"Earlier version's steps: `{json.dumps(pick['steps'])}`")
 
 st.warning("**Human review required.** A person should confirm the steps match the research question before "
            "this cohort is used. **Limitation:** layer membership (`has_*`) comes from the sample manifest. "
