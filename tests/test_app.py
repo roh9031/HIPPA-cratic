@@ -92,3 +92,18 @@ def test_unfinished_step_is_left_out_instead_of_breaking_the_funnel():
     assert any("Not applied yet" in m.value for m in at.markdown)
     assert not any("can't run" in e.value or "failed" in e.value for e in at.error)
     assert at.metric  # the funnel still ran
+
+
+def test_the_starred_fix_is_shown_first_and_resolves_the_trap():
+    """The patient-level survival trap: three fixes, and the starred one is the real fix."""
+    at = run_app()
+    trap = json.loads((ROOT / "examples" / "trap_patient_level_survival.json")
+                      .read_text(encoding="utf-8"))["steps"]
+    at.text_area(key="steps_text").set_value(json.dumps(trap)).run()
+    assert any("Recommended." in c.value for c in at.caption)
+    star = [b for b in at.button if "sample_id instead of patient_id" in b.label]
+    assert len(star) == 1
+    star[0].click().run()
+    assert not at.exception
+    assert any("No unresolved problems" in s.value for s in at.success)
+    assert json.loads(at.session_state.steps_text)[-1]["on"] == "sample_id"

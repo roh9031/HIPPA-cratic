@@ -9,7 +9,7 @@ from pathlib import Path
 import pandas as pd
 import streamlit as st
 
-from cohort_studio import builder, data, engine, export
+from cohort_studio import advice, builder, data, engine, export
 
 st.set_page_config(page_title="Cohort Studio", layout="wide")
 
@@ -119,15 +119,23 @@ for r in results:
         # Step 0 is the starting table, so an error there is about the step list as a whole.
         st.error(f"**Step {r.index} failed:** {r.error}" if r.index else
                  f"**These steps can't run:** {r.error}")
-    for w_i, w in enumerate(r.warnings):
+    advised = advice.advise(r, steps)   # which fix is the right one, and why (docs/GAPS.md #21)
+    for w_i in advice.warning_order(r, advised):
+        w = r.warnings[w_i]
         box = st.error if w.severity == "problem" else st.info
         box(f"**Step {r.index} · {r.label}**\n\n{w.message}")
         with st.expander(f"Affected records and fixes (step {r.index}, {w.kind})", expanded=w.severity == "problem"):
             if w.examples:
                 st.dataframe(pd.DataFrame(w.examples), hide_index=True)
-            for f_i, fix in enumerate(w.fixes):
+            for f_i in advice.order(w_i, w.fixes, advised):
+                fix = w.fixes[f_i]
+                best, why = advised.get((w_i, f_i), (False, ""))
                 st.button(f"Apply fix: {fix['label']}", key=f"fix-{r.index}-{w_i}-{f_i}",
-                          on_click=set_steps, args=(fix["steps"],))
+                          on_click=set_steps, args=(fix["steps"],),
+                          type="primary" if best else "secondary",
+                          icon=":material/star:" if best else None)
+                if why:
+                    st.caption(f"**Recommended.** {why}" if best else why)
 
 with st.container(border=True):
     st.markdown("**Why isn't a sample in my cohort?** Type a sample ID to see which step removed it and why.")
