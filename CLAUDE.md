@@ -1,7 +1,8 @@
 # Project context for Claude
 
 This is our team's entry for the **OncoSys Cancer AI Lab hackathon** (Nov 11–14, 2026), **Cohort Firewall** track,
-product **Cohort Studio**. The challenge pack (data, briefs, rules) is the sibling repo
+product **Cohort Studio**, team **HIPPA-cratics**: A Rohini Bidnurmath (captain, trap hunter / SQL),
+B Rae Michelle (engine), C Hanpeng Yang (data), D Sonal Gabburi (UI), E Ronit Jariwala (AI). The challenge pack (data, briefs, rules) is the sibling repo
 `../oncosys-hackathon-challenge`. Read its `products/cohort-studio.md`, `RULES.md` and `SUBMISSION_CHECKLIST.md`
 when you need the official requirements.
 
@@ -51,5 +52,5 @@ All five data layers = 535; plus a diagnostic slide = 531 (572 rows if inner-joi
 - Test AI drafting on 5–10 requests; more trap examples and tests
 - OR groups (`{"any"/"all": [...]}`) and patient-level matching (`allow_cross_sample`) work in the engine,
   the builder (and/or switch per condition; nested groups read-only) and the SQL check; all 26 trap cases pass. Next gaps in docs/GAPS.md
-- More joinable tables (mutation/protein values); fill in README team names and demo video
+- More joinable tables (mutation/protein values); add the demo video link to the README
 - Run `pytest -q` and the app after every change
