@@ -121,7 +121,7 @@ def set_steps(steps) -> None:
         uid = _new_uid()
         ss.b_uids.append(uid)
         ss.b_steps[uid] = s
-        ss.b_conds[uid] = [_new_uid() for _ in (s.get("where") or [])]
+        ss.b_conds[uid] = [_new_uid() for c in (s.get("where") or []) if not _is_group(c)]
     text = json.dumps(steps, indent=2)
     ss.steps_text = text
     ss.b_json_shown = text
@@ -163,6 +163,10 @@ def _remove_cond(uid: int) -> None:
 
 # ---------------------------------------------------------------- conditions
 
+def _is_group(condition: dict) -> bool:
+    return "any" in condition or "all" in condition
+
+
 def _condition(uid: int, cuid: int, columns: list[str], values: dict[str, list[str]],
                seed: dict) -> dict | None:
     """One condition row. Returns None while it has no value yet, so a half-typed
@@ -202,15 +206,20 @@ def _condition(uid: int, cuid: int, columns: list[str], values: dict[str, list[s
 def _conditions(uid: int, columns: list[str], values: dict[str, list[str]],
                 seed_where: list[dict]) -> list[dict]:
     cuids = st.session_state.b_conds.setdefault(uid, [])
+    simple_seeds = [c for c in seed_where if not _is_group(c)]
     conds = [c for c in (_condition(uid, cuid, columns, values,
-                                    seed_where[n] if n < len(seed_where) else {})
+                                    simple_seeds[n] if n < len(simple_seeds) else {})
                          for n, cuid in enumerate(cuids)) if c]
+    groups = [c for c in seed_where if _is_group(c)]
+    for group in groups:
+        st.caption("OR/AND group is read-only here; edit it in the JSON view.")
+        st.json(group)
     with st.container(horizontal=True):
         st.button("Add condition", icon=":material/add:", key=f"{WIDGET_PREFIX}{uid}_addc",
                   on_click=_add_cond, args=(uid,))
         st.button("Remove last condition", icon=":material/remove:", key=f"{WIDGET_PREFIX}{uid}_rmc",
                   on_click=_remove_cond, args=(uid,), disabled=not cuids)
-    return conds
+    return conds + groups
 
 
 # ---------------------------------------------------------------- one step
@@ -270,6 +279,8 @@ def _step(number: int, uid: int, prefix: list[dict]) -> tuple[dict, bool]:
             st.caption(f"Conditions on the `{table}` rows themselves (which records count as a match):")
             conds = _conditions(uid, columns, values, seed.get("where") or [])
             step = {"op": "join", "table": table, "on": on, "how": how}
+            if "allow_cross_sample" in seed:
+                step["allow_cross_sample"] = seed["allow_cross_sample"]
             if conds:
                 step["where"] = conds
 

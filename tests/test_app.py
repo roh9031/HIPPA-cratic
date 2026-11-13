@@ -87,6 +87,29 @@ def test_json_view_round_trips_into_the_builder():
     assert counts(at)["Samples"] == "139"
 
 
+def test_her2_example_preserves_or_group():
+    at = run_app()
+    next(b for b in at.button if b.label == "her2 positive").click().run()
+    assert counts(at)["Samples"] == "197"
+    steps = json.loads(at.session_state.steps_text)
+    assert steps[1]["where"][0]["any"]
+
+
+def test_json_view_preserves_patient_level_opt_in():
+    at = run_app()
+    steps = [
+        {"op": "filter", "where": [{"column": "sample_type", "operator": "eq",
+                                    "values": ["Primary Tumor"]}]},
+        {"op": "join", "table": "samples", "on": "patient_id", "how": "semi",
+         "allow_cross_sample": True,
+         "where": [{"column": "sample_type", "operator": "eq",
+                     "values": ["Solid Tissue Normal"]}]},
+    ]
+    at.text_area(key="steps_text").set_value(json.dumps(steps)).run()
+    assert not at.exception
+    assert json.loads(at.session_state.steps_text)[1]["allow_cross_sample"] is True
+
+
 def test_invalid_json_is_reported_and_leaves_the_cohort_alone():
     at = run_app()
     at.text_area(key="steps_text").set_value("[{not json").run()
