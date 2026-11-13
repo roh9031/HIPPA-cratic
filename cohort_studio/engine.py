@@ -144,10 +144,14 @@ def _mask(df: pd.DataFrame, cond: dict, where: str) -> pd.Series:
         return {"gt": num > x, "ge": num >= x, "lt": num < x, "le": num <= x}[op].fillna(False)
     text = s.astype(str).str.strip().str.lower().where(s.notna(), None)
     lv = [v.strip().lower() for v in vals]
-    if op in ("in", "eq"):
+    if op in ("in", "eq", "not_in", "ne"):
         m = text.isin(lv)
-    elif op in ("not_in", "ne"):
-        m = ~text.isin(lv) & s.notna()
+        # Numbers match by value too: a column with blanks is stored as float, so 40 reads as "40.0" (objective = 40).
+        nums = pd.to_numeric(pd.Series(lv, dtype=object), errors="coerce").dropna()
+        if len(nums):
+            m = m | pd.to_numeric(text, errors="coerce").isin(list(nums))
+        if op in ("not_in", "ne"):
+            m = ~m & s.notna()
     elif op == "startswith":
         m = text.fillna("").str.startswith(tuple(lv))
     elif op == "contains":

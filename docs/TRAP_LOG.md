@@ -181,3 +181,99 @@ but export is blocked by the cross-sample warning (gap #2).
 
 **Findings:** gap #19. The sample manifest is missing 24 normal samples that have slides, so "has a matched normal" is
 139 by the manifest or 163 counting slide evidence. The team should decide, and possibly ask the organizers.
+
+## Trap: all five data layers, with and without a diagnostic slide (Nov 12)
+
+**Answer keys: 535 and 531** · tests `all_five_layers`, `all_five_layers_diagnostic_slide` · ✅ both pass.
+Why this one: `data/tcga-brca/README.md` in the challenge repo quotes "Primary tumors with all five data layers = 535",
+so a judge is likely to start from it and add a join.
+
+**1. All five layers.** Matches the README.
+```sql
+SELECT count(*) AS all_five FROM samples
+WHERE sample_type='Primary Tumor' AND has_survival AND has_mutation AND has_copy_number AND has_rna AND has_protein
+```
+→ **535**
+
+**2. Naive version with a diagnostic slide** (a plain JOIN, the way most people would write it):
+```sql
+SELECT count(*) AS rows_naive, count(DISTINCT s.sample_id) AS samples
+FROM samples s JOIN slides d ON d.sample_id = s.sample_id AND d.slide_kind LIKE 'diagnostic%'
+WHERE sample_type='Primary Tumor' AND has_survival AND has_mutation AND has_copy_number AND has_rna AND has_protein
+```
+| Rows (naive) | Samples (correct) |
+|---|---|
+| 572 | **531** |
+
+41 extra rows from samples with 2+ diagnostic slides; 4 of the 535 have no diagnostic slide.
+
+**3. One sample per patient?**
+```sql
+SELECT count(*) samples, count(DISTINCT patient_id) patients FROM samples
+WHERE sample_type='Primary Tumor' AND has_survival AND has_mutation AND has_copy_number AND has_rna AND has_protein
+```
+→ 535 / 535. No patient has two such tumors, so "patients" and "samples" give the same answer here. Not a trap.
+
+**4. Engine check.** Steps: primary tumor → five `has_* = True` conditions → slides semi-join on sample_id. Engine gives
+535 and 531; the naive inner join is flagged as inflation (572 rows / 531 samples) and the semi-join fix is correct.
+Verify with SQL agrees at every step.
+
+**Findings:** none. The engine handles it.
+
+## Batch: TRAPS.md #5–#12 (Nov 12)
+
+All passing. One real engine bug found (40x slides). The exact SQL for each answer key is in `tests/test_answer_key.py`.
+
+**Exploration queries**
+```sql
+-- age: is it text? any non-numbers?
+SELECT age_at_initial_pathologic_diagnosis v, count(*) FROM clinical c JOIN samples s USING (sample_id)
+WHERE s.sample_type='Primary Tumor' AND TRY_CAST(v AS DOUBLE) IS NULL GROUP BY 1;          -- 4 missing (NULL)
+SELECT count(*) FILTER (WHERE TRY_CAST(age_at_initial_pathologic_diagnosis AS DOUBLE) > 50)  a,     -- 766
+       count(*) FILTER (WHERE TRY_CAST(Age_at_Initial_Pathologic_Diagnosis_nature2012 AS DOUBLE) > 50) b,  -- 569
+       count(*) FILTER (WHERE TRY_CAST(age_at_initial_pathologic_diagnosis AS DOUBLE) >= 50) a_ge,  -- 800
+       count(*) FILTER (WHERE TRY_CAST(age_at_initial_pathologic_diagnosis AS DOUBLE) = 50) eq50    -- 34
+FROM samples s JOIN clinical c USING (sample_id) WHERE s.sample_type='Primary Tumor';
+
+-- gender, two columns
+SELECT gender, Gender_nature2012, count(*) FROM samples s LEFT JOIN clinical c USING (sample_id)
+WHERE s.sample_type='Primary Tumor' GROUP BY ALL ORDER BY 3 DESC;
+-- FEMALE 1,085 · MALE 12 · unknown 4. Conflict: TCGA-E2-A14W-01 is MALE vs FEMALE (nature2012)
+
+-- died: clinical vital_status vs survival OS
+SELECT c.vital_status, v.OS, count(*) FROM samples s LEFT JOIN clinical c USING (sample_id)
+LEFT JOIN survival v USING (sample_id) WHERE s.sample_type='Primary Tumor' GROUP BY ALL ORDER BY ALL;
+-- DECEASED/1: 151 · DECEASED/0: 1 (TCGA-E9-A245-01, OS.time 26) · LIVING/0: 945 · none: 4
+
+-- Luminal A, two columns
+SELECT PAM50Call_RNAseq, PAM50_mRNA_nature2012, count(*) FROM samples s JOIN clinical c USING (sample_id)
+WHERE s.sample_type='Primary Tumor' AND (PAM50Call_RNAseq ILIKE 'luma%' OR PAM50_mRNA_nature2012 ILIKE 'luminal a%')
+GROUP BY ALL ORDER BY 3 DESC;
+-- RNAseq LumA: 421 · nature2012 Luminal A: 231 · both called but disagree: 43
+
+-- slides by objective
+SELECT objective, slide_kind, count(*) FROM slides GROUP BY ALL ORDER BY ALL;   -- 7 diagnostic slides have no objective
+
+-- tumors incl. metastatic; per patient
+SELECT count(*) samples, count(DISTINCT patient_id) patients FROM samples WHERE sample_type <> 'Solid Tissue Normal';
+-- 1,108 / 1,101: all 7 metastatic samples belong to patients who also have a primary
+```
+
+| Trap | Answer key | Decision / alternatives | Engine |
+|---|---|---|---|
+| Over 50 | **766** | strictly > 50. ≥ 50 = 800; nature2012 age column = 569 | ✅ |
+| Female | **1,085** | `gender` column | ✅ |
+| Died | **151** | survival `OS = 1`. `vital_status` = 152 | ✅ |
+| Luminal A | **421** | `PAM50Call_RNAseq = 'LumA'`. nature2012 = 231. Typing "Luminal A" on the RNAseq column gives 0 (empty warning) | ✅ |
+| 40x diagnostic slide | **920** | `objective = 40` | ❌ → ✅ **bug found and fixed** (below) |
+| Only 20x diagnostic slides | **134** | anti-join on non-20x diagnostic slides. Same as "any 20x" in this data | ✅ |
+| No survival record | **4** | TCGA-AN-A0FE-01, TCGA-AN-A0FG-01, TCGA-BH-A0B2-01, TCGA-E2-A1IP-01 | ✅ |
+| All tumor samples | **1,108** | includes 7 metastatic. `contains 'tumor'` gives 1,101 | ✅ |
+| One tumor per patient | **1,101** | prefer the primary | ✅ (by file order, gap #9) |
+
+**Bug found: numbers in columns with blanks.** The engine gave **0 samples** for `objective = 40`. The column has 7
+blanks, so pandas stores it as float and 40 reads as `"40.0"`, which didn't match the text `"40"`. Verify with SQL
+showed the mismatch (SQL: 920). Fix: `eq` / `in` / `ne` / `not_in` now match numbers by value too, in both the engine
+and the SQL translator. Test: `test_numbers_match_by_value`. Logged as GAPS.md #29.
+
+**New data conflicts for GAPS.md #17:** gender (1 tumor), vital status vs OS (1 tumor), PAM50 (43 tumors).

@@ -11,6 +11,7 @@ Edit this file when we decide.
 | Data processing | **pandas** | The tables are small (~1.2k samples, a few thousand slides), so everything fits in memory |
 | UI | **Streamlit** | A web UI in pure Python with no frontend build. The brief suggests it |
 | AI (optional) | **Anthropic Claude** (`claude-opus-5-5`), structured JSON output | Turns plain English into steps. Uses a key the user supplies, never stored |
+| Independent check | **DuckDB** | The app's **Verify with SQL** button translates the steps into one SQL query and runs it on the raw files without the engine (`sqlcheck.py`), so a judge can check the count themselves |
 | Tests | **pytest** + **DuckDB** | pytest pins the demo numbers and trap behavior. DuckDB is the **independent answer key**: each test case writes the correct cohort as plain SQL on the raw files and checks that the engine's export matches it exactly (`tests/test_answer_key.py`) |
 | Data | Frozen TCGA-BRCA release from the challenge repo | Required by the rules. Checked against `sources.csv` checksums |
 
@@ -99,7 +100,7 @@ patient (12-char barcode, TCGA-XX-XXXX)
 
 ## Open questions for the team
 
-1. **pandas or DuckDB in the engine?** Current choice: the engine stays on pandas (the data is small and the row-level checks are one-liners), and DuckDB is the test answer key. Possible stretch: a "show equivalent SQL" panel in the UI.
+1. **pandas or DuckDB in the engine?** Current choice: the engine stays on pandas (the data is small and the row-level checks are one-liners), and DuckDB is the test answer key. Done Nov 12: the "Verify with SQL" panel shows the equivalent SQL and runs it.
 2. ~~**Dropdowns or a node canvas?**~~ Decided: dropdowns (`builder.py`, Nov 12). A node canvas was judged too risky for the time left.
 3. **Which tables to add?** Mutation and protein values would let judges ask "with a TP53 mutation". Each new table needs a grain and a key in `data.TABLES`.
 4. **Inner join default:** a *new* join step starts at `semi`, and picking a finer-grained table with `inner`/`left` shows a caption saying the join will repeat samples. Should the UI go further and switch `how` automatically? (It doesn't, so the user's choice is never changed behind their back.)
