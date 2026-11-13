@@ -2,7 +2,7 @@
 
 **User:** a researcher who needs a TCGA-BRCA cohort but doesn't write joins for a living.
 
-**Workflow they finish:** describe a cohort in plain English (or edit the steps directly), see how many
+**Workflow they finish:** describe a cohort in plain English (or build it from dropdowns), see how many
 rows, samples and patients survive every step, get told exactly where a join inflates the count or links
 a record to the wrong sample, fix it with one click, and export `cohort_samples.csv` plus a script that
 rebuilds the cohort.
@@ -61,6 +61,9 @@ A second example (`examples/trap_patient_level_survival.json`) joins survival on
 flags both the inflation and the 100 rows that attach another sample's record (normal tissue) to a tumor.
 
 ## How it works
+- `cohort_studio/builder.py`: the step builder in the app. Each step is a row of dropdowns (op → table →
+  column → value), so nobody has to write JSON; the JSON view is still there under “Advanced” and edits in
+  it load straight back into the builder. The value lists come from the cohort as it stands at that step.
 - `cohort_studio/engine.py`: a cohort is a JSON list of `filter` / `join` / `collapse` steps. After every
   step it checks: did rows grow faster than distinct samples? Did a patient-level join attach records from a
   different sample? Were samples dropped only because a value was missing? Each problem comes with fixes.

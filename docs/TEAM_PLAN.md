@@ -12,10 +12,10 @@ the organizers. The challenge repo gives only the data, the briefs, the rules an
 | Engine (`engine.py`): steps, per-step counts, inflation and cross-sample checks, one-click fixes | ✅ works, tested |
 | Data loading (`data.py`) with checksum check | ✅ works |
 | Export (`export.py`): `cohort_samples.csv`, `cohort.json`, `rebuild_cohort.py` | ✅ works |
-| Streamlit UI (`app.py`) | ✅ works, but users edit **raw JSON** |
+| Streamlit UI (`app.py` + `builder.py`): dropdown step builder, JSON kept as an advanced view | ✅ works, tested |
 | CLI (`run_cohort.py`), exit code 2 on unresolved problems | ✅ works |
 | AI drafting (`llm.py`) | ⚠️ never tested with a real key |
-| Tests | ⚠️ 18 tests, including 8 DuckDB answer-key cases. Needs more traps. Known gaps: [GAPS.md](GAPS.md) |
+| Tests | ⚠️ 34 tests (30 pass, 4 known-gap xfails): 8 DuckDB answer-key cases and 6 `AppTest` UI cases. Needs more traps. Known gaps: [GAPS.md](GAPS.md) |
 | README | ⚠️ missing team names, demo video and third-party licenses |
 
 Demo numbers: Primary tumor 1,101 → RNA 1,097 → protein 742 → join diagnostic slides **776 rows / 731 samples**

@@ -23,6 +23,8 @@ problems with one-click fixes, and exports `cohort_samples.csv` (one row per 15-
 - `cohort_studio/llm.py`: optional Claude drafting (`claude-opus-5-5`, structured output, user-supplied key,
   server-side fallbacks). It sees only schema, never rows. Not yet tested with a real key.
 - `cohort_studio/export.py`: cohort_samples.csv, cohort.json, rebuild_cohort.py.
+- `cohort_studio/builder.py`: the dropdown step builder in the UI (widgets keyed by a per-step id; JSON view
+  under “Advanced” round-trips). Only produces the step JSON above.
 - `app.py`: Streamlit UI. `run_cohort.py`: CLI (exit 2 = unresolved problems). `tests/`: pytest.
 
 ## Known-good numbers (demo)
@@ -35,7 +37,6 @@ Primary tumor 1,101 → has RNA 1,097 → has protein 742 → join diagnostic sl
 - Code freeze: Sat Nov 14, 2:15 PM ET. A finished workflow beats an ambitious broken one.
 
 ## Open TODOs
-- Dropdown step builder (non-coders shouldn't have to edit JSON)
 - Test AI drafting on 5–10 requests; more trap examples and tests
 - More joinable tables (mutation/protein values); fill in README team names and demo video
 - Run `pytest -q` and the app after every change
