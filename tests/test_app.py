@@ -27,7 +27,21 @@ def run_app():
 
 
 def counts(at):
-    return {m.label: m.value for m in at.metric}
+    """Section 4's three metrics. The compare panel repeats Samples/Patients lower down, so
+    only the first of each label counts."""
+    out = {}
+    for m in at.metric:
+        if m.label in ("Samples", "Patients", "Rows in table"):
+            out.setdefault(m.label, m.value)
+    return out
+
+
+def has_widget(at, key):
+    try:
+        at.selectbox(key=key)
+        return True
+    except KeyError:
+        return False
 
 
 def test_demo_example_loads_and_flags_the_inflating_join():
@@ -92,3 +106,38 @@ def test_unfinished_step_is_left_out_instead_of_breaking_the_funnel():
     assert any("Not applied yet" in m.value for m in at.markdown)
     assert not any("can't run" in e.value or "failed" in e.value for e in at.error)
     assert at.metric  # the funnel still ran
+
+
+def test_the_starred_fix_is_shown_first_and_resolves_the_trap():
+    """The patient-level survival trap: three fixes, and the starred one is the real fix."""
+    at = run_app()
+    trap = json.loads((ROOT / "examples" / "trap_patient_level_survival.json")
+                      .read_text(encoding="utf-8"))["steps"]
+    at.text_area(key="steps_text").set_value(json.dumps(trap)).run()
+    assert any("Recommended." in c.value for c in at.caption)
+    star = [b for b in at.button if "sample_id instead of patient_id" in b.label]
+    assert len(star) == 1
+    star[0].click().run()
+    assert not at.exception
+    assert any("No unresolved problems" in s.value for s in at.success)
+    assert json.loads(at.session_state.steps_text)[-1]["on"] == "sample_id"
+
+
+def test_comparing_with_the_previous_version_shows_what_the_fix_changed():
+    at = run_app()                                     # v1: the inflated demo cohort
+    assert not has_widget(at, "compare_with"), "nothing to compare on the first version"
+    at.button(key="fix-4-0-0").click().run()           # v2: the semi-join fix
+    assert not at.exception
+    assert any("Exactly the same 731 samples" in m.value and "45 duplicate rows" in m.value
+               for m in at.markdown)
+    assert has_widget(at, "compare_with")
+
+
+def test_the_compared_version_can_become_the_current_one_without_breaking():
+    """Toggling a fix back makes the selected version the current cohort: the widget must cope."""
+    at = run_app()
+    at.button(key="fix-4-0-0").click().run()
+    join_uid = at.session_state.b_uids[-1]
+    at.selectbox(key=f"b_w_{join_uid}_how").set_value(HOW_LABELS["inner"]).run()
+    assert not at.exception
+    assert any("45 rows now repeat a sample" in m.value for m in at.markdown)

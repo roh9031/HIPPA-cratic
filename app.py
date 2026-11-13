@@ -6,10 +6,11 @@ import json
 import os
 from pathlib import Path
 
+import altair as alt
 import pandas as pd
 import streamlit as st
 
-from cohort_studio import builder, data, engine, export
+from cohort_studio import advice, builder, data, engine, export, versions
 
 st.set_page_config(page_title="Cohort Studio", layout="wide")
 
@@ -103,6 +104,35 @@ df, results = engine.run(steps)
 
 # ---------------------------------------------------------------- 3. funnel
 
+# Same chart st.bar_chart drew, with two changes: the x axis is pinned at 0 (st.bar_chart binds
+# pan/zoom to the scales, which let the axis be dragged into negative counts), and hovering a bar
+# shows the step's full label, which the axis has to truncate. Colours and the rest of the styling
+# come from Streamlit's own chart theme, so it looks like it did before.
+MEASURES = ["rows", "samples", "patients"]
+
+
+def funnel_chart(funnel: pd.DataFrame) -> "alt.Chart":
+    long = funnel.melt(id_vars=["step", "what"], value_vars=MEASURES,
+                       var_name="measure", value_name="count")
+    long["label"] = long["step"].astype(str) + " · " + long["what"]
+    order = list(dict.fromkeys(long["label"]))
+    return (
+        alt.Chart(long)
+        .mark_bar()
+        .encode(
+            y=alt.Y("label:N", sort=order, title=None),
+            yOffset=alt.YOffset("measure:N"),
+            x=alt.X("count:Q", title=None, scale=alt.Scale(domainMin=0, nice=True, clamp=True)),
+            color=alt.Color("measure:N", title=None,
+                            legend=alt.Legend(orient="bottom", direction="horizontal")),
+            tooltip=[alt.Tooltip("what:N", title="step"),
+                     alt.Tooltip("measure:N", title="counting"),
+                     alt.Tooltip("count:Q", title="count", format=",")],
+        )
+        .properties(height=90 * len(order) + 60)   # the bar thickness st.bar_chart used
+    )
+
+
 st.subheader("3 · What survives each step")
 funnel = pd.DataFrame([{
     "step": r.index, "what": r.label, "rows": r.rows, "samples": r.samples, "patients": r.patients,
@@ -111,23 +141,30 @@ funnel = pd.DataFrame([{
                                        else ("ℹ️ note" if r.warnings else "✅")),
 } for r in results])
 st.dataframe(funnel, hide_index=True, width="stretch")
-st.bar_chart(funnel.set_index(funnel["step"].astype(str) + " · " + funnel["what"].str[:40])[["rows", "samples", "patients"]],
-             stack=False, horizontal=True)
+st.altair_chart(funnel_chart(funnel), alt="Rows, samples and patients surviving each step")
 
 for r in results:
     if r.error:
         # Step 0 is the starting table, so an error there is about the step list as a whole.
         st.error(f"**Step {r.index} failed:** {r.error}" if r.index else
                  f"**These steps can't run:** {r.error}")
-    for w_i, w in enumerate(r.warnings):
+    advised = advice.advise(r, steps)   # which fix is the right one, and why (docs/GAPS.md #21)
+    for w_i in advice.warning_order(r, advised):
+        w = r.warnings[w_i]
         box = st.error if w.severity == "problem" else st.info
         box(f"**Step {r.index} · {r.label}**\n\n{w.message}")
         with st.expander(f"Affected records and fixes (step {r.index}, {w.kind})", expanded=w.severity == "problem"):
             if w.examples:
                 st.dataframe(pd.DataFrame(w.examples), hide_index=True)
-            for f_i, fix in enumerate(w.fixes):
+            for f_i in advice.order(w_i, w.fixes, advised):
+                fix = w.fixes[f_i]
+                best, why = advised.get((w_i, f_i), (False, ""))
                 st.button(f"Apply fix: {fix['label']}", key=f"fix-{r.index}-{w_i}-{f_i}",
-                          on_click=set_steps, args=(fix["steps"],))
+                          on_click=set_steps, args=(fix["steps"],),
+                          type="primary" if best else "secondary",
+                          icon=":material/star:" if best else None)
+                if why:
+                    st.caption(f"**Recommended.** {why}" if best else why)
 
 with st.container(border=True):
     st.markdown("**Why isn't a sample in my cohort?** Type a sample ID to see which step removed it and why.")
@@ -157,6 +194,34 @@ m1.metric("Samples", f"{final.samples:,}")
 m2.metric("Patients", f"{final.patients:,}")
 m3.metric("Rows in table", f"{final.rows:,}", delta=f"+{final.extra_rows} duplicates" if final.extra_rows else None,
           delta_color="inverse")
+
+# ---- compare this cohort with an earlier one from this session (docs/GAPS.md #26)
+history = versions.record(steps, df) if not any(r.error for r in results) else st.session_state.get("versions", [])
+earlier = [v for v in history[1:]]
+if earlier:
+    with st.expander(f"Compare with an earlier version ({len(earlier)} to choose from)"):
+        st.caption("Every set of steps you have run in this session is kept here, newest first. Nothing is saved "
+                   "to disk.")
+        # Options are version numbers, not the dicts: a version can leave this list (it became the
+        # current cohort, or aged out), and a stale selection would break the widget.
+        by_number = {v["n"]: v for v in earlier}
+        if ss.get("compare_with") not in by_number:
+            ss.pop("compare_with", None)
+        pick = by_number[st.selectbox("Compare the cohort above with", list(by_number), key="compare_with",
+                                      format_func=lambda n: by_number[n]["label"])]
+        d = versions.compare(history[0], pick)
+        st.markdown(versions.summary(d))
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Rows", f"{d['rows'][1]:,}", delta=f"{d['rows'][1] - d['rows'][0]:+,}", delta_color="off")
+        c2.metric("Samples", f"{d['samples'][1]:,}", delta=f"{d['samples'][1] - d['samples'][0]:+,}",
+                  delta_color="off")
+        c3.metric("Patients", f"{d['patients'][1]:,}", delta=f"{d['patients'][1] - d['patients'][0]:+,}",
+                  delta_color="off")
+        moved = versions.diff_table(d)
+        if len(moved):
+            st.dataframe(moved, hide_index=True, height=240)
+            st.download_button("cohort_diff.csv", moved.to_csv(index=False), "cohort_diff.csv", "text/csv")
+        st.caption(f"Earlier version's steps: `{json.dumps(pick['steps'])}`")
 
 st.warning("**Human review required.** A person should confirm the steps match the research question before "
            "this cohort is used. **Limitation:** layer membership (`has_*`) comes from the sample manifest. "
