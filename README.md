@@ -13,32 +13,76 @@ rebuilds the cohort.
 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) (tech stack, system design, open questions)
 
 ## Setup
-Clone this repo **next to** the challenge repo (or set `ONCOSYS_DATA` to its `data/tcga-brca` folder):
+
+You need Python 3.10 or newer and git. Clone this repo **next to** the challenge repo, in a short path
+(not inside another git repository), or set `ONCOSYS_DATA` to the challenge repo's `data/tcga-brca` folder:
 ```
 oncosyshackathon/
 ├── oncosys-hackathon-challenge/
 └── cohort-studio/
 ```
+
+### macOS / Linux
 ```bash
-mkdir oncosyshackathon && cd oncosyshackathon
+mkdir ~/oncosyshackathon && cd ~/oncosyshackathon
 git clone https://github.com/disleveK/oncosys-hackathon-challenge.git
 git clone https://github.com/roh9031/HIPPA-cratic.git cohort-studio      # note: clone into "cohort-studio"
-cd oncosys-hackathon-challenge && python data/tcga-brca/fetch.py && cd ..   # downloads ~70 MB, checks checksums
 cd cohort-studio
-python -m venv .venv
-.venv\Scripts\activate          # macOS/Linux: source .venv/bin/activate
+python3 -m venv .venv
+source .venv/bin/activate        # the prompt now starts with (.venv); from here on, `python` and `pip` work
 pip install -r requirements.txt
+cd ../oncosys-hackathon-challenge && python data/tcga-brca/fetch.py && cd ../cohort-studio   # ~70 MB, checks checksums
 ```
-Windows: keep the folder path short (e.g. `D:\oncosyshackathon`). A very deep path can make `pip install` fail on
-the long-path limit. In `cmd`, switching drives needs `cd /d D:\oncosyshackathon`.
+
+### Windows
+Keep the folder path short (e.g. `C:\oncosyshackathon`). A very deep path can make `pip install` fail on the
+long-path limit. In `cmd`, switching drives needs `cd /d`.
+```bat
+mkdir C:\oncosyshackathon && cd /d C:\oncosyshackathon
+git clone https://github.com/disleveK/oncosys-hackathon-challenge.git
+git clone https://github.com/roh9031/HIPPA-cratic.git cohort-studio
+cd cohort-studio
+py -m venv .venv
+.venv\Scripts\activate           :: PowerShell: .venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+cd ..\oncosys-hackathon-challenge && python data\tcga-brca\fetch.py && cd ..\cohort-studio
+```
+
+### Check it worked
+```bash
+pytest -q                 # all tests pass, including the demo numbers
+streamlit run app.py      # the sidebar shows ✅ for all four data files
+```
+Open a new terminal later? Activate the environment again first (`source .venv/bin/activate` on macOS/Linux,
+`.venv\Scripts\activate` on Windows).
+
+### If something goes wrong
+- **`python: command not found` (macOS):** the environment isn't active. Run `source .venv/bin/activate` from
+  the `cohort-studio` folder, or use `python3`.
+- **`CERTIFICATE_VERIFY_FAILED` when fetching (macOS, Python from python.org):** run
+  `open "/Applications/Python 3.14/Install Certificates.command"` once (change `3.14` to your version; check
+  with `python3 --version`), then run `fetch.py` again.
+- **Sidebar shows ❌, or `FileNotFoundError: ... sample_manifest.csv`:** the data isn't downloaded yet. Run the
+  `fetch.py` line again and watch for errors, or set `ONCOSYS_DATA` to the folder that holds
+  `sample_manifest.csv`.
+- **Sidebar shows ⚠️ CHANGED:** a file doesn't match the event's frozen checksum. Run `fetch.py` again; don't use
+  that file for judged results.
 
 ## Run
+With the environment active, from the `cohort-studio` folder:
 ```bash
 streamlit run app.py                                         # the app
 python run_cohort.py examples/demo_diagnostic_slides.json    # same engine from the command line
 python run_cohort.py examples/demo_diagnostic_slides.json --verify --why TCGA-E2-A15E-01   # SQL check + trace one sample
 python run_cohort.py --ask "ER-positive primary tumors with a diagnostic slide"   # AI draft, needs ANTHROPIC_API_KEY
+python scripts/run_ai_eval.py                                # AI drafting test on 10 requests, needs ANTHROPIC_API_KEY
 pytest -q                                                    # checks the demo numbers
+```
+The AI features use your own Anthropic key, set for the current terminal only. Never put it in a file:
+```bash
+export ANTHROPIC_API_KEY="your-key"          # macOS/Linux
+set ANTHROPIC_API_KEY=your-key               # Windows cmd
+$env:ANTHROPIC_API_KEY="your-key"            # Windows PowerShell
 ```
 `run_cohort.py` exits with code 2 if the cohort still has duplicates or cross-sample links, and 3 if `--verify` finds
 the SQL version disagrees. **The demo example is the careless version on purpose**, so the command above prints

@@ -1,0 +1,200 @@
+"""Run the AI-drafting test requests and write a results table.
+
+Put this file in scripts/ in the team repo, then from the repo root:
+
+    export ANTHROPIC_API_KEY="your-key"       # this terminal only; never commit it
+    python3 scripts/run_ai_eval.py             # all 10 requests
+    python3 scripts/run_ai_eval.py 1 4 7       # only these
+
+It writes docs/ai_eval_results.md: a summary table plus every drafted step list, so you can score each
+draft in docs/ai_eval.md. The automatic scores are suggestions. You make the final call.
+
+Only the request text goes to the AI (through your llm.py). No patient rows are sent.
+"""
+import datetime as dt
+import inspect
+import json
+import os
+import pathlib
+import sys
+import time
+
+ROOT = pathlib.Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+
+# If the script picks the wrong function in llm.py, put its name here, e.g. "draft_steps".
+DRAFT_FUNCTION = None
+
+try:
+    from cohort_studio import engine, llm
+except ImportError:
+    import engine
+    import llm
+
+# Fill in expected_samples once you've built each cohort by hand in the app (None = not known yet).
+REQUESTS = [
+    {"n": 1, "text": "primary tumors with both RNA and protein data and a diagnostic slide",
+     "tests": "baseline live demo", "expected_samples": 731},
+    {"n": 2, "text": "primary tumors that have a frozen slide",
+     "tests": "different slide kind", "expected_samples": None},
+    {"n": 3, "text": "ER-positive primary tumors with survival data",
+     "tests": "sample-level clinical filter", "expected_samples": None},
+    {"n": 4, "text": "triple-negative primary tumors",
+     "tests": "domain term into three filters", "expected_samples": None},
+    {"n": 5, "text": "primary tumors from patients who also have a normal tissue sample",
+     "tests": "patient-level match", "expected_samples": None, "pending": "B: patient-level matching"},
+    {"n": 6, "text": "tumors with every data type",
+     "tests": "vague wording", "expected_samples": None},
+    {"n": 7, "text": "primry tumours w/ protien data and dx slides",
+     "tests": "typos and abbreviations", "expected_samples": None},
+    {"n": 8, "text": "primary tumors from patients diagnosed before age 50",
+     "tests": "numeric filter", "expected_samples": None},
+    {"n": 9, "text": "TP53-mutated primary tumors",
+     "tests": "data not joinable yet", "expect_decline": True, "pending": "C: mutation table"},
+    {"n": 10, "text": "which patients should get endocrine therapy?",
+     "tests": "clinical decision", "expect_decline": True},
+]
+
+
+def find_draft_function():
+    if DRAFT_FUNCTION:
+        return getattr(llm, DRAFT_FUNCTION)
+    found = [(name, fn) for name, fn in inspect.getmembers(llm, inspect.isfunction)
+             if fn.__module__ == llm.__name__ and "draft" in name.lower() and not name.startswith("_")]
+    if len(found) != 1:
+        names = [name for name, _ in found] or "none"
+        sys.exit(f"Found these drafting functions in llm.py: {names}. "
+                 f"Set DRAFT_FUNCTION at the top of this script to the right one.")
+    return found[0][1]
+
+
+def call_draft(fn, text, api_key):
+    """Pass the request first, and the key to any parameter whose name mentions a key."""
+    params = inspect.signature(fn).parameters
+    kwargs = {name: api_key for name in params if "key" in name.lower()}
+    return fn(text, **kwargs)
+
+
+def split_output(output):
+    """Turn whatever llm.py returns into (steps, extras). extras holds notes, assumptions, refusals."""
+    if isinstance(output, tuple):
+        steps, extras = None, {}
+        for part in output:
+            if isinstance(part, list) and steps is None:
+                steps = part
+            elif isinstance(part, dict) and "steps" in part:
+                steps, extras = part["steps"], {k: v for k, v in part.items() if k != "steps"}
+            elif part is not None:
+                extras.setdefault("other", []).append(part)
+        return steps or [], extras
+    if isinstance(output, str):
+        try:
+            output = json.loads(output)
+        except json.JSONDecodeError:
+            return [], {"text": output}
+    if isinstance(output, dict):
+        return output.get("steps") or [], {k: v for k, v in output.items() if k != "steps"}
+    if isinstance(output, list):
+        return output, {}
+    return [], {"unrecognized_output": repr(output)[:500]}
+
+
+def suggest_score(req, steps, samples, duplicates, error):
+    if req.get("expect_decline"):
+        if steps:
+            return "Wrong: drafted steps for a request it should decline"
+        if error:
+            return f"Check by hand: drafting raised an error instead of declining ({error})"
+        return "Correctly declined"
+    if error:
+        return f"Check by hand: draft didn't run ({error})"
+    if not steps:
+        return "Wrong: no steps drafted"
+    expected = req.get("expected_samples")
+    if expected is None:
+        return "Check by hand: no expected count yet"
+    if samples == expected and duplicates == 0:
+        return "Correct"
+    if samples == expected:
+        return f"One edit away: right samples, but {duplicates} duplicate rows (needs a semi-join)"
+    return f"Check by hand: {samples} samples, expected {expected}"
+
+
+def run_one(req, draft, api_key):
+    record = {**req, "steps": [], "extras": {}, "rows": None, "samples": None,
+              "duplicates": None, "error": None}
+    started = time.time()
+    try:
+        output = call_draft(draft, req["text"], api_key)
+        record["steps"], record["extras"] = split_output(output)
+    except Exception as err:   # an AI failure shouldn't stop the other requests
+        record["error"] = f"drafting failed: {type(err).__name__}: {err}"
+    record["seconds"] = round(time.time() - started, 1)
+
+    if record["steps"] and not record["error"]:
+        try:
+            df, _results = engine.run(record["steps"])
+            record["rows"] = len(df)
+            record["samples"] = int(df["sample_id"].nunique())
+            record["duplicates"] = record["rows"] - record["samples"]
+        except Exception as err:
+            record["error"] = f"{type(err).__name__}: {err}"
+    record["score"] = suggest_score(req, record["steps"], record["samples"], record["duplicates"],
+                                    record["error"])
+    return record
+
+
+def write_report(records, path):
+    lines = [
+        "# AI drafting results",
+        "",
+        f"Run {dt.datetime.now().strftime('%Y-%m-%d %H:%M')}. Automatic scores are suggestions: "
+        "check each draft below and record the final score in `docs/ai_eval.md`.",
+        "",
+        "| # | Request | Suggested score | Samples (draft / expected) | Duplicate rows | Seconds |",
+        "|---|---|---|---|---|---|",
+    ]
+    for r in records:
+        expected = "decline" if r.get("expect_decline") else (r.get("expected_samples") or "?")
+        got = "—" if r["samples"] is None else r["samples"]
+        dups = "—" if r["duplicates"] is None else r["duplicates"]
+        pending = f" (pending {r['pending']})" if r.get("pending") else ""
+        lines.append(f"| {r['n']} | {r['text']} | {r['score']}{pending} | {got} / {expected} | {dups} "
+                     f"| {r['seconds']} |")
+    lines.append("")
+    for r in records:
+        lines += [f"## {r['n']}. {r['text']}", "", f"Tests: {r['tests']}. Suggested score: {r['score']}.", ""]
+        if r["error"]:
+            lines += [f"Error: `{r['error']}`", ""]
+        lines += ["Drafted steps:", "", "```json", json.dumps(r["steps"], indent=2), "```", ""]
+        if r["extras"]:
+            lines += ["Notes from the AI:", "", "```json", json.dumps(r["extras"], indent=2, default=str), "```", ""]
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("\n".join(lines))
+
+
+def main():
+    api_key = os.environ.get("ANTHROPIC_API_KEY")
+    if not api_key:
+        sys.exit('No key found. In this terminal, run: export ANTHROPIC_API_KEY="your-key"  (never commit it)')
+    chosen = {int(a) for a in sys.argv[1:]} or {r["n"] for r in REQUESTS}
+    draft = find_draft_function()
+    print(f"Using llm.{draft.__name__}\n")
+
+    records = []
+    for req in REQUESTS:
+        if req["n"] not in chosen:
+            continue
+        print(f"{req['n']:>2}. {req['text']}")
+        record = run_one(req, draft, api_key)
+        print(f"    {record['score']}\n")
+        records.append(record)
+
+    out = ROOT / "docs" / "ai_eval_results.md"
+    write_report(records, out)
+    passed = sum(r["score"].startswith(("Correct", "One edit away")) for r in records)
+    print(f"{passed}/{len(records)} correct or one edit away by automatic check. Details: {out}")
+
+
+if __name__ == "__main__":
+    main()
