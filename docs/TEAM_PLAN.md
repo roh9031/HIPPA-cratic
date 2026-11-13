@@ -19,7 +19,7 @@ the organizers. The challenge repo gives only the data, the briefs, the rules an
 | AI drafting (`llm.py`) | ⚠️ never tested with a real key |
 | Tests | ✅ 134 tests, all passing: 26 trap cases with DuckDB answer keys (all pass since B's OR and patient-level fixes, Nov 12), `AppTest` UI tests, SQL check, rebuild, recommended-fix and version-compare tests. Known gaps: [GAPS.md](GAPS.md) |
 | Clean install from README | ✅ tested Nov 12 (fresh clone of both repos, new venv). Rerun after the last merge on Friday |
-| README | ⚠️ missing team names and demo video link |
+| README | ⚠️ missing demo video link (team names added) |
 
 Demo numbers: Primary tumor 1,101 → RNA 1,097 → protein 742 → join diagnostic slides **776 rows / 731 samples**
 (inflated) → semi-join fix **731**.
@@ -30,17 +30,17 @@ They give us **a new cohort request that inflates through a join we haven't seen
 `cohort_samples.csv`. A checker compares that file with the correct cohort. **That's the score that
 matters most**, so finding and fixing traps (roles 1, 2 and 2b) is the priority.
 
-## Roles (proposed: confirm on Thursday)
+## Roles (team HIPPA-cratics)
 
 Everyone writes code. The submission paperwork is split up as small side tasks instead of being one person's job.
 
 | Teammate | Role | Main coding job | Side task | Done when |
 |---|---|---|---|---|
-| **A** (proposed: roh9031) | **1 · Trap hunter** | Invent requests judges might give. Write the correct answer as **DuckDB SQL** and add each as a `Case` in `tests/test_answer_key.py` (template inside) plus an example in `examples/`. Hand failures to B and C. | Review and merge PRs into `main` (repo owner) | 10+ traps, each passing or logged in GAPS.md. ✅ 25 traps (Nov 12) |
-| **B** | **2 · Engine** | Fix what A finds. First job: patient-level matching (GAPS.md #2). | ~~Ask organizers about redacted records~~ answered Nov 12: keep and flag (GAPS.md #6) | A's tests pass |
-| **C** | **2b · Data** | Add mutation data as a joinable table so "TP53-mutated" requests work (GAPS.md #3); then protein/RNA if time allows | List third-party code and licenses in README | Gene-level mutation requests work with a test ✅ Nov 13 |
-| **D** | **3 · UI** | Dropdown step builder (op → table → column → value). Keep JSON as an "advanced" view. | Record the demo video | A non-coder builds the demo cohort without touching JSON. ✅ builder merged Nov 12 (demo video still to do) |
-| **E** | **4 · AI** | Test "Draft with AI" on 10 requests with a personal key, log results in `docs/ai_eval.md`, improve the prompt in `llm.py` | README setup steps + run the Friday clean-install check | ≥ 8/10 drafts correct or one edit away |
+| **A** Rohini Bidnurmath (captain, roh9031) | **1 · Trap hunter** | Invent requests judges might give. Write the correct answer as **DuckDB SQL** and add each as a `Case` in `tests/test_answer_key.py` (template inside) plus an example in `examples/`. Hand failures to B and C. | Review and merge PRs into `main` (repo owner) | 10+ traps, each passing or logged in GAPS.md. ✅ 25 traps (Nov 12) |
+| **B** Rae Michelle | **2 · Engine** | Fix what A finds. First job: patient-level matching (GAPS.md #2). | ~~Ask organizers about redacted records~~ answered Nov 12: keep and flag (GAPS.md #6) | A's tests pass |
+| **C** Hanpeng Yang | **2b · Data** | Add mutation data as a joinable table so "TP53-mutated" requests work (GAPS.md #3); then protein/RNA if time allows | List third-party code and licenses in README | Gene-level mutation requests work with a test ✅ Nov 13 |
+| **D** Sonal Gabburi | **3 · UI** | Dropdown step builder (op → table → column → value). Keep JSON as an "advanced" view. | Record the demo video | A non-coder builds the demo cohort without touching JSON. ✅ builder merged Nov 12 (demo video still to do) |
+| **E** Ronit Jariwala | **4 · AI** | Test "Draft with AI" on 10 requests with a personal key, log results in `docs/ai_eval.md`, improve the prompt in `llm.py` | README setup steps + run the Friday clean-install check | ≥ 8/10 drafts correct or one edit away |
 
 **Who talks to whom:** A ↔ B and C (A finds bugs, they fix them). D and E only *produce* step JSON (format in
 [ARCHITECTURE.md](ARCHITECTURE.md)), so they won't collide with the engine work.

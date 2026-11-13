@@ -7,7 +7,9 @@ rows, samples and patients survive every step, get told exactly where a join inf
 a record to the wrong sample, fix it with one click, and export `cohort_samples.csv` plus a script that
 rebuilds the cohort.
 
-**Team:** _add names_ · **Demo video:** _add link_
+**Team HIPPA-cratics:** Rohini Bidnurmath (captain) · Rae Michelle · Hanpeng Yang · Sonal Gabburi · Ronit Jariwala
+
+**Demo video:** _add link_
 
 **Teammates, start here:** [docs/TEAM_PLAN.md](docs/TEAM_PLAN.md) (roles, timeline, git workflow) ·
 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) (tech stack, system design, open questions)
