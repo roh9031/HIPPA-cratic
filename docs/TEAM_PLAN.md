@@ -2,7 +2,7 @@
 
 **Code freeze: Saturday, Nov 14, 2:15 PM ET.** A finished workflow beats an ambitious broken one.
 
-## Where we are (Wed, Nov 11)
+## Where we are (Thu, Nov 12, evening)
 
 The core product already works end to end. It's our own code (scaffolded with Claude Code), not provided by
 the organizers. The challenge repo gives only the data, the briefs, the rules and a starter notebook.
@@ -13,10 +13,12 @@ the organizers. The challenge repo gives only the data, the briefs, the rules an
 | Data loading (`data.py`) with checksum check | ✅ works |
 | Export (`export.py`): `cohort_samples.csv`, `cohort.json`, `rebuild_cohort.py` | ✅ works |
 | Streamlit UI (`app.py` + `builder.py`): dropdown step builder, JSON kept as an advanced view | ✅ works, tested |
-| CLI (`run_cohort.py`), exit code 2 on unresolved problems | ✅ works |
+| CLI (`run_cohort.py`), exit code 2 on unresolved problems, `--verify` / `--why` | ✅ works |
+| **Verify with SQL** + **Why isn't sample X** (`sqlcheck.py`, DuckDB) | ✅ works, tested |
 | AI drafting (`llm.py`) | ⚠️ never tested with a real key |
-| Tests | ⚠️ 34 tests (30 pass, 4 known-gap xfails): 8 DuckDB answer-key cases and 6 `AppTest` UI cases. Needs more traps. Known gaps: [GAPS.md](GAPS.md) |
-| README | ⚠️ missing team names, demo video and third-party licenses |
+| Tests | ✅ 92 tests (88 pass, 4 known-gap xfails): 25 trap cases with DuckDB answer keys (21 pass, 4 wait on engine gaps #2 and #16), 7 `AppTest` UI tests, SQL check and rebuild tests. Known gaps: [GAPS.md](GAPS.md) |
+| Clean install from README | ✅ tested Nov 12 (fresh clone of both repos, new venv). Rerun after the last merge on Friday |
+| README | ⚠️ missing team names and demo video link |
 
 Demo numbers: Primary tumor 1,101 → RNA 1,097 → protein 742 → join diagnostic slides **776 rows / 731 samples**
 (inflated) → semi-join fix **731**.
@@ -33,10 +35,10 @@ Everyone writes code. The submission paperwork is split up as small side tasks i
 
 | Teammate | Role | Main coding job | Side task | Done when |
 |---|---|---|---|---|
-| **A** (proposed: roh9031) | **1 · Trap hunter** | Invent requests judges might give. Write the correct answer as **DuckDB SQL** and add each as a `Case` in `tests/test_answer_key.py` (template inside) plus an example in `examples/`. Hand failures to B and C. | Review and merge PRs into `main` (repo owner) | 10+ traps, each passing or logged in GAPS.md |
+| **A** (proposed: roh9031) | **1 · Trap hunter** | Invent requests judges might give. Write the correct answer as **DuckDB SQL** and add each as a `Case` in `tests/test_answer_key.py` (template inside) plus an example in `examples/`. Hand failures to B and C. | Review and merge PRs into `main` (repo owner) | 10+ traps, each passing or logged in GAPS.md. ✅ 25 traps (Nov 12) |
 | **B** | **2 · Engine** | Fix what A finds. First job: patient-level matching (GAPS.md #2). | Ask organizers in Discord what the checker expects for redacted survival records (GAPS.md #6) | A's tests pass |
 | **C** | **2b · Data** | Add mutation data as a joinable table so "TP53-mutated" requests work (GAPS.md #3), then protein/RNA if time allows | List third-party code and licenses in README | Gene-level mutation requests work with a test |
-| **D** | **3 · UI** | Dropdown step builder (op → table → column → value). Keep JSON as an "advanced" view. | Record the demo video | A non-coder builds the demo cohort without touching JSON |
+| **D** | **3 · UI** | Dropdown step builder (op → table → column → value). Keep JSON as an "advanced" view. | Record the demo video | A non-coder builds the demo cohort without touching JSON. ✅ builder merged Nov 12 (demo video still to do) |
 | **E** | **4 · AI** | Test "Draft with AI" on 10 requests with a personal key, log results in `docs/ai_eval.md`, improve the prompt in `llm.py` | README setup steps + run the Friday clean-install check | ≥ 8/10 drafts correct or one edit away |
 
 **Who talks to whom:** A ↔ B and C (A finds bugs, they fix them). D and E only *produce* step JSON (format in

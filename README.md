@@ -38,12 +38,18 @@ streamlit run app.py                                         # the app
 python run_cohort.py examples/demo_diagnostic_slides.json    # same engine from the command line
 python run_cohort.py examples/demo_diagnostic_slides.json --verify --why TCGA-E2-A15E-01   # SQL check + trace one sample
 python run_cohort.py --ask "ER-positive primary tumors with a diagnostic slide"   # AI draft, needs ANTHROPIC_API_KEY
-pytest -q                                                    # checks the demo numbers
+python scripts/sql.py                                        # DuckDB SQL console over the raw files
+pytest -q                                                    # 92 tests, see below
 ```
 `run_cohort.py` exits with code 2 if the cohort still has duplicates or cross-sample links, and 3 if `--verify` finds
 the SQL version disagrees. **The demo example is the careless version on purpose**, so the command above prints
 `UNRESOLVED` and exits 2: that's the tool catching the inflated join. Its output files (`cohort_samples.csv`,
 `cohort.sql`) go in the current folder.
+
+`pytest -q` runs 92 tests (88 pass; 4 are known gaps marked as expected failures, listed in
+[docs/GAPS.md](docs/GAPS.md)): the demo numbers, **25 cohort requests checked against independent DuckDB SQL
+answer keys** (`tests/test_answer_key.py`, queries in [docs/TRAP_LOG.md](docs/TRAP_LOG.md)), the SQL check and
+sample trace (`tests/test_verify.py`), the exported rebuild script, and the app itself (`tests/test_app.py`).
 
 ## The demo
 Request: *primary tumors with both RNA and protein data and a diagnostic slide*.
@@ -89,4 +95,4 @@ flags both the inflation and the 100 rows that attach another sample's record (n
 ## Data and licenses
 TCGA-BRCA via UCSC Xena and NCI Imaging Data Commons (slides CC BY 3.0). See the challenge repo's
 `DATA_LICENSES.md`. No raw data is committed here. Third-party code: pandas (BSD-3), Streamlit (Apache-2.0),
-anthropic SDK (MIT), pytest (MIT).
+DuckDB (MIT), anthropic SDK (MIT), pytest (MIT).

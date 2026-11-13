@@ -73,4 +73,4 @@ Each has a test.
 **Done Nov 12:** #5 (dropdown step builder; the JSON view is now “Advanced”, and `tests/test_app.py` runs the real app with `AppTest`), and the exported `rebuild_cohort.py` is now tested (it reproduces the app's CSV exactly, `tests/test_rebuild.py`). The demo splits RNA (1,097) and protein (742) into separate steps so the funnel shows where tumors are lost.
 #22 "Verify with SQL" is in the app (section 4), with `tests/test_verify.py`. #23 "Why isn't sample X" is in section 3. Both also run from the command line (`--verify`, `--why`). #29 fixed. Trap backlog #5–#12 done (all pass).
 
-**Next, before the Friday feature freeze:** 2 → 3 (engine) · 4, 5 (in parallel, other roles) · the rest only if time allows.
+**Next, before the Friday feature freeze:** 16 and 2 (engine: 4 trap tests are waiting on them) → 18 → 3 (data) · 4 (AI eval) · 21 (recommended fix) · the rest only if time allows.

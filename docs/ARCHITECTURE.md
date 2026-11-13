@@ -46,6 +46,10 @@ judges' checker does.
  ┌──────────────────────────┐
  │  app.py (UI) / CLI       │  funnel table, chart, problem boxes, fix buttons
  └──────┬───────────────────┘
+        │      ┌──────────────────────────┐
+        ├────▶ │  sqlcheck.py (DuckDB)    │  same steps as SQL: Verify (engine = SQL?)
+        │      │                          │  and trace one sample (why was it removed?)
+        │      └──────────────────────────┘
         ▼
  ┌──────────────────────────┐
  │  export.py               │  cohort_samples.csv · cohort.json · rebuild_cohort.py
@@ -64,8 +68,10 @@ testable code. The model never sees patient rows.
 | `cohort_studio/llm.py` | Builds a schema description (column names plus short category values), calls Claude with a strict JSON schema, returns `steps`, `assumptions` and `cannot_answer`. |
 | `cohort_studio/export.py` | One row per unique 15-char `sample_id`. Definition JSON with funnel and file hashes. A rebuild script. |
 | `cohort_studio/builder.py` | The dropdown step builder: renders the step list as widgets, keyed by a per-step id so moving or deleting a step keeps everyone's values, and keeps the “Advanced: JSON” box in sync both ways. Column and value choices for a step come from the cohort *as of that step* (it runs the engine on the steps before it). Only produces the step format below. |
-| `app.py` | Streamlit page: 1 describe → 2 build → 3 funnel and warnings → 4 review and export. |
-| `run_cohort.py` | Same engine from the command line. Exit code 2 if problems remain. |
+| `cohort_studio/sqlcheck.py` | DuckDB views over the raw files. Translates a step list into one SQL query (a CTE per step) for **Verify with SQL**, and traces one sample through it for **Why isn't sample X in my cohort?**. Doesn't use the engine's code, so it's an independent check. |
+| `app.py` | Streamlit page: 1 describe → 2 build → 3 funnel, warnings, sample trace → 4 review, Verify with SQL, export. |
+| `run_cohort.py` | Same engine from the command line. `--verify` and `--why ID`. Exit code 2 if problems remain, 3 if the SQL check disagrees. |
+| `scripts/sql.py` | DuckDB SQL console for writing answer keys (`-f file.sql` runs a file). |
 
 ### The data's grains (the root cause of every trap)
 
