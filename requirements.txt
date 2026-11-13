@@ -1,5 +1,6 @@
 pandas>=2.0
 streamlit>=1.67    # the step builder needs menu_button, horizontal containers, accept_new_options
+altair>=5.0        # the funnel chart in app.py (also installed by streamlit; listed because app.py imports it)
 anthropic>=1.0    # optional: only for "Draft steps with AI"
 pytest
 duckdb>=1.0        # "Verify with SQL" in the app, plus the SQL answer-key tests
