@@ -86,9 +86,11 @@ which release was used. `tests/test_release.py` checks that changed records chan
 ### Use your own data (CSV files or Supabase)
 In the app's sidebar, **Use your own data** runs the same steps, checks, fixes, exports and Verify with SQL on a
 researcher's own tables instead of TCGA-BRCA:
-1. **Upload CSV files** (one per table), or connect a **Supabase** project: its URL, its anon or service key
-   (Project Settings > API) and the table names. Tables are read through Supabase's REST API; with the anon
-   key, each table needs Row Level Security off or a read policy. The key is used only for the session.
+1. **Upload CSV files** (one per table), or connect a **Supabase** project: its URL
+   (`https://<project-id>.supabase.co`, the id is in the dashboard address), its **publishable** key
+   (`sb_publishable_...`) or legacy anon key (Project Settings > API Keys; never the secret key) and the table
+   names. Tables are only read, through Supabase's REST API (Data API on); with a publishable or anon key, each
+   table needs Row Level Security off or a read policy. The key is used only for the session, never saved.
 2. Pick which table is the **sample list** (one row per sample) and, for each table, its sample ID and/or
    patient ID column (guessed from the column names). Tables with several rows per sample, or keyed only by
    patient, are detected and labelled.
@@ -97,8 +99,9 @@ researcher's own tables instead of TCGA-BRCA:
 The TCGA-specific extras (the examples, AI drafting, the makeup check and Data notes) are switched off for
 your own data. A made-up example to try is in [examples/byod_synthetic](examples/byod_synthetic) (60
 synthetic patients, lab results with several rows per sample, a patient-level visits table): blood samples
-joined to `labs` give 52 rows for 28 samples, flagged, and the starred fix gives 28. Tests:
-`tests/test_custom.py`.
+joined to `labs` give 52 rows for 28 samples, flagged, and the starred fix gives 28. Tried live both ways on
+Nov 14: uploaded as CSVs, and imported into a real Supabase project and read from there (same numbers, Verify
+with SQL matched). Tests: `tests/test_custom.py`.
 
 ## The demo
 Request: *primary tumors with both RNA and protein data and a diagnostic slide*.
