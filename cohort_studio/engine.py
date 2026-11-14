@@ -168,26 +168,33 @@ def _mask(df: pd.DataFrame, cond: dict, where: str) -> pd.Series:
         except ValueError:
             raise StepError(f"{op!r} on {col!r} needs a number, got {vals[0]!r}.")
         return {"gt": num > x, "ge": num >= x, "lt": num < x, "le": num <= x}[op].fillna(False)
-    text = s.astype(str).str.strip().str.lower().where(s.notna() & ~unknown, None)
-    lv = [v.strip().lower() for v in vals]
+    raw_text = s.astype(str).str.strip().str.lower().where(s.notna() & ~unknown, None)
+    raw_lv = [v.strip().lower() for v in vals]
     if op in ("in", "eq", "not_in", "ne"):
-        m = text.isin(lv)
-        # Numbers match by value too: a column with blanks is stored as float, so 40 reads as "40.0" (objective = 40).
-        nums = pd.to_numeric(pd.Series(lv, dtype=object), errors="coerce").dropna()
+        # yes / 1 / true are the same value (GAPS #10) ...
+        m = raw_text.map(_normalise_boolean_value).isin([_normalise_boolean_value(v) for v in raw_lv])
+        # ... and numbers match by value: a column with blanks is stored as float, so 40 reads as "40.0"
+        # (objective = 40) and 1 reads as "1.0" (DSS = 1). Compare the numbers before the yes/true mapping.
+        nums = pd.to_numeric(pd.Series(raw_lv, dtype=object), errors="coerce").dropna()
         if len(nums):
-            m = m | pd.to_numeric(text, errors="coerce").isin(list(nums))
+            m = m | pd.to_numeric(raw_text, errors="coerce").isin(list(nums))
         if op in ("not_in", "ne"):
             m = ~m & s.notna() & ~unknown
     elif op == "startswith":
-        m = text.fillna("").str.startswith(tuple(lv))
+        m = raw_text.fillna("").str.startswith(tuple(raw_lv))
     elif op == "contains":
-        m = text.fillna("").apply(lambda t: any(v in t for v in lv))
+        m = raw_text.fillna("").apply(lambda t: any(v in t for v in raw_lv))
     return m.astype(bool)
 
 
 def _unknown_value_mask(s: pd.Series) -> pd.Series:
     text = s.astype(str).str.strip().str.lower()
     return text.eq("indeterminate") | text.str.startswith("[") & text.str.endswith("]")
+
+
+def _normalise_boolean_value(value: str) -> str:
+    return {"yes": "true", "1": "true", "true": "true",
+            "no": "false", "0": "false", "false": "false"}.get(value, value)
 
 
 def _apply_where(df, where_list, where_name):
@@ -261,7 +268,15 @@ def run(steps: list[dict], ddir: str | None = None):
                 df, warns = _join(df, step, i, steps, ddir)
             elif step["op"] == "collapse":
                 key = f"{step.get('level', 'sample')}_id"
-                df = df.drop_duplicates(subset=[key], keep="first")
+                if step.get("level", "sample") == "patient":
+                    priority = {"Primary Tumor": 0, "Metastatic": 1, "Solid Tissue Normal": 2}
+                    ranked = df["sample_type"].map(priority).fillna(len(priority))
+                    df = (df.assign(_collapse_priority=ranked)
+                            .sort_values("_collapse_priority", kind="stable")
+                            .drop_duplicates(subset=[key], keep="first")
+                            .drop(columns="_collapse_priority"))
+                else:
+                    df = df.drop_duplicates(subset=[key], keep="first")
         except (StepError, FileNotFoundError) as e:
             results.append(StepResult(i, step, describe(step), *_counts(before), error=str(e)))
             return before, results
@@ -425,15 +440,25 @@ def _join(df, step, i, steps, ddir):
     if how in ("semi", "anti"):
         hit = df[on].isin(right[on])
         out = df[hit] if how == "semi" else df[~hit]
-        if on == "patient_id" and how == "semi" and not allow_cross_sample:
+        if on == "patient_id" and not allow_cross_sample:
             by_sample = df["sample_id"].isin(right["sample_id"])
             only_via_patient = df[hit & ~by_sample]
             if len(only_via_patient):
+                if how == "semi":
+                    message = (
+                        f"{only_via_patient['sample_id'].nunique()} samples were kept only because a *different* "
+                        f"sample of the same patient has a matching {table} record (e.g. a normal-tissue slide). "
+                        "Records should link to a sample only when the sample barcode matches."
+                    )
+                else:
+                    message = (
+                        f"{only_via_patient['sample_id'].nunique()} samples were excluded only because a *different* "
+                        f"sample of the same patient has a matching {table} record. "
+                        "Records should link to a sample only when the sample barcode matches."
+                    )
                 warns.append(Warning_(
                     "cross_sample", "problem",
-                    f"{only_via_patient['sample_id'].nunique()} samples were kept only because a *different* "
-                    f"sample of the same patient has a matching {table} record (e.g. a normal-tissue slide). "
-                    f"Records should link to a sample only when the sample barcode matches.",
+                    message,
                     examples=only_via_patient[["sample_id", "patient_id"]].head(10).to_dict("records"),
                     fixes=[{"label": "Match on sample_id instead of patient_id",
                             "steps": _with_step(steps, i, on="sample_id")}],

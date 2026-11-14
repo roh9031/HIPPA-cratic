@@ -2,7 +2,7 @@
 
 Put this file in scripts/ in the team repo, then from the repo root:
 
-    source .env                               # holds ANTHROPIC_API_KEY, NVIDIA_API_KEY or GROQ_API_KEY
+    source .env                               # holds ANTHROPIC_API_KEY or NVIDIA_API_KEY
     python3 scripts/run_ai_eval.py             # all 10 requests
     python3 scripts/run_ai_eval.py 1 4 7       # only these
 
@@ -37,30 +37,38 @@ except ImportError:
     import engine
     import llm
 
-# Fill in expected_samples once you've built each cohort by hand in the app (None = not known yet).
+# expected_samples come from A's DuckDB answer keys (tests/test_answer_key.py, docs/TRAP_LOG.md), Nov 13.
+# The prompt asks for a plain inner join on "with a slide", so the tool can show the inflation: a draft with the
+# right samples plus duplicate rows is "one edit away" (one click on the starred fix), by design.
 REQUESTS = [
     {"n": 1, "text": "primary tumors with both RNA and protein data and a diagnostic slide",
      "tests": "baseline live demo", "expected_samples": 731},
     {"n": 2, "text": "primary tumors that have a frozen slide",
-     "tests": "different slide kind", "expected_samples": None},
+     "tests": "different slide kind", "expected_samples": 1093},
     {"n": 3, "text": "ER-positive primary tumors with survival data",
-     "tests": "sample-level clinical filter", "expected_samples": None},
+     "tests": "sample-level clinical filter", "expected_samples": 808},
     {"n": 4, "text": "triple-negative primary tumors",
-     "tests": "domain term into three filters", "expected_samples": None},
+     "tests": "domain term into three filters", "expected_samples": 158},
     {"n": 5, "text": "primary tumors from patients who also have a normal tissue sample",
-     "tests": "patient-level match (semi-join on patient_id, allow_cross_sample)", "expected_samples": None},
+     "tests": "patient-level match (allow_cross_sample)", "expected_samples": 139},
     {"n": 6, "text": "tumors with every data type",
-     "tests": "vague wording", "expected_samples": None},
+     "tests": "vague wording (should state 'tumors' = primary)", "expected_samples": 535},
     {"n": 7, "text": "primry tumours w/ protien data and dx slides",
-     "tests": "typos and abbreviations", "expected_samples": None},
+     "tests": "typos and abbreviations", "expected_samples": 731},
     {"n": 8, "text": "primary tumors from patients diagnosed before age 50",
-     "tests": "numeric filter", "expected_samples": None},
+     "tests": "numeric filter", "expected_samples": 297},
     {"n": 9, "text": "TP53-mutated primary tumors",
-     "tests": "mutation semi-join (gene = TP53, mutated = true)", "expected_samples": None},
+     "tests": "mutation table (C, Nov 13)", "expected_samples": 264},
     {"n": 10, "text": "which patients should get endocrine therapy?",
      "tests": "clinical decision", "expect_decline": True},
-    {"n": 11, "text": "TP53 wild-type primary tumors",
-     "tests": "wild-type trap: needs has_mutation = True before the anti-join", "expected_samples": 527},
+    {"n": 11, "text": "primary tumors without a TP53 mutation",
+     "tests": "wild type needs has_mutation first (GAPS #31)", "expected_samples": 527},
+    {"n": 12, "text": "primary tumors with both TP53 and PIK3CA mutations",
+     "tests": "'both' = one step per gene (GAPS #32)", "expected_samples": 57},
+    {"n": 13, "text": "HER2-mutated primary tumors",
+     "tests": "gene alias HER2 -> ERBB2 (GAPS #33)", "expected_samples": 23},
+    {"n": 14, "text": "primary tumors that responded to chemotherapy",
+     "tests": "data can't answer (no treatment response)", "expect_decline": True},
 ]
 
 
@@ -78,7 +86,7 @@ def find_draft_function():
 
 def call_draft(fn, text, api_key):
     """Pass the request first. With a Claude key, also pass it to any parameter whose name mentions a key.
-    With a Groq key, pass nothing extra: llm.py reads GROQ_API_KEY itself."""
+    With an NVIDIA key, pass nothing extra: llm.py reads NVIDIA_API_KEY itself."""
     params = inspect.signature(fn).parameters
     kwargs = {name: api_key for name in params if "key" in name.lower()} if api_key else {}
     return fn(text, **kwargs)
@@ -108,8 +116,11 @@ def split_output(output):
     return [], {"unrecognized_output": repr(output)[:500]}
 
 
-def suggest_score(req, steps, samples, duplicates, error):
+def suggest_score(req, steps, samples, duplicates, error, cannot_answer=None):
     if req.get("expect_decline"):
+        if steps and cannot_answer:
+            # The prompt says: say what can't be answered, and draft the part that can. Check the wording.
+            return "Check by hand: said it can't answer, and drafted the part it could"
         if steps:
             return "Wrong: drafted steps for a request it should decline"
         if error:
@@ -149,7 +160,7 @@ def run_one(req, draft, api_key):
         except Exception as err:
             record["error"] = f"{type(err).__name__}: {err}"
     record["score"] = suggest_score(req, record["steps"], record["samples"], record["duplicates"],
-                                    record["error"])
+                                    record["error"], record["extras"].get("cannot_answer"))
     return record
 
 
@@ -212,12 +223,11 @@ def main():
     labels = {
         "claude": "Claude (ANTHROPIC_API_KEY)",
         "nvidia": f"NVIDIA, model {os.environ.get('NVIDIA_MODEL', 'nvidia/nemotron-3-super-120b-a12b')} (NVIDIA_API_KEY)",
-        "groq": f"Groq, model {os.environ.get('GROQ_MODEL', 'openai/gpt-oss-120b')} (GROQ_API_KEY)",
     }
-    needed = {"claude": "ANTHROPIC_API_KEY", "nvidia": "NVIDIA_API_KEY", "groq": "GROQ_API_KEY"}
+    needed = {"claude": "ANTHROPIC_API_KEY", "nvidia": "NVIDIA_API_KEY"}
     if chosen not in labels or not os.environ.get(needed[chosen]):
         sys.exit("No key found. Put ONE of these in .env and run `source .env` (never commit or paste a key):\n"
-                 '  export ANTHROPIC_API_KEY="..."   or   export NVIDIA_API_KEY="..."   or   export GROQ_API_KEY="..."')
+                 '  export ANTHROPIC_API_KEY="..."   or   export NVIDIA_API_KEY="..."')
     if chosen != "claude":
         api_key = None   # the other providers read their own key from the environment
     provider = labels[chosen]

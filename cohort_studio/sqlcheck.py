@@ -85,6 +85,11 @@ def _cond_sql(c: dict, alias: str = "") -> str:
     unknown = f"coalesce({raw} = 'indeterminate' OR ({raw} LIKE '[%' AND {raw} LIKE '%]'), FALSE)"
     known = f"({col} IS NOT NULL AND NOT {unknown})"
     text = f"CASE WHEN {unknown} THEN NULL ELSE {raw} END"
+    # yes / 1 / true and no / 0 / false are the same value for exact matches (GAPS #10), like the engine.
+    # Numbers are still compared unmapped, so DSS = 1 matches 1.0.
+    bools = {"yes": "true", "1": "true", "true": "true", "no": "false", "0": "false", "false": "false"}
+    as_bool = (f"CASE WHEN {text} IN ('yes', '1', 'true') THEN 'true' "
+               f"WHEN {text} IN ('no', '0', 'false') THEN 'false' ELSE {text} END")
     if op == "notnull":
         return known
     if op == "isnull":
@@ -94,7 +99,7 @@ def _cond_sql(c: dict, alias: str = "") -> str:
         return f"TRY_CAST({col} AS DOUBLE) {sym} {float(vals[0])!r}"
     lits = ", ".join(_lit(v) for v in vals)
     if op in ("in", "eq", "not_in", "ne"):
-        match = f"{text} IN ({lits})"
+        match = f"{as_bool} IN ({', '.join(_lit(bools.get(v, v)) for v in vals)})"
         nums = [repr(float(v)) for v in vals if _is_number(v)]
         if nums:  # numbers match by value too (40 = 40.0), same as the engine
             match = f"({match} OR TRY_CAST({text} AS DOUBLE) IN ({', '.join(nums)}))"
@@ -158,7 +163,10 @@ def _ctes(steps: list[dict], con) -> str:
             body = f"SELECT * FROM {prev} WHERE {_where_sql(s['where'])}"
         elif s["op"] == "collapse":
             key = _q(f"{s.get('level', 'sample')}_id")
-            body = f"SELECT * FROM {prev} QUALIFY row_number() OVER (PARTITION BY {key} ORDER BY _ord) = 1"
+            # One per patient prefers Primary Tumor, then Metastatic, then Normal (GAPS #9), like the engine.
+            prio = ("CASE sample_type WHEN 'Primary Tumor' THEN 0 WHEN 'Metastatic' THEN 1 "
+                    "WHEN 'Solid Tissue Normal' THEN 2 ELSE 3 END, " if s.get("level", "sample") == "patient" else "")
+            body = f"SELECT * FROM {prev} QUALIFY row_number() OVER (PARTITION BY {key} ORDER BY {prio}_ord) = 1"
         else:  # join
             table, on, how = s["table"], s.get("on", "sample_id"), s.get("how", "inner")
             right = f"(SELECT * FROM {table} WHERE {_where_sql(s.get('where'))})"

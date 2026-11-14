@@ -1,6 +1,6 @@
 # AI drafting evaluation
 
-Owner: E (AI). Goal: at least 8 of 10 drafts are **correct** or **one edit away**.
+Owner: E (AI). Goal: at least 11 of 14 drafts are **correct** or **one edit away**.
 
 ## How to run a test
 
@@ -20,7 +20,7 @@ Owner: E (AI). Goal: at least 8 of 10 drafts are **correct** or **one edit away*
 - **Correctly declined:** for requests the data can't answer or that ask for a clinical decision, the AI says so
   plainly and drafts no steps. This counts as correct.
 
-## The 10 requests
+## The 14 requests (expected counts from the DuckDB answer keys)
 
 | # | Request (paste exactly) | What it tests | Expected draft, in plain words |
 |---|---|---|---|
@@ -32,35 +32,44 @@ Owner: E (AI). Goal: at least 8 of 10 drafts are **correct** or **one edit away*
 | 6 | tumors with every data type | Vague wording | All layers required. Should state whether "tumors" meant primary only, rather than guess silently. |
 | 7 | primry tumours w/ protien data and dx slides | Typos and abbreviations | Same as request 1 without RNA. |
 | 8 | primary tumors from patients diagnosed before age 50 | Numeric filter | Age-at-diagnosis column below 50. If the step format can't do numeric comparisons, it should say so instead of inventing one. |
-| 9 | TP53-mutated primary tumors | Data the tool may not have yet | Until gene-level mutation data is joinable (teammate C), it should say it can't filter by gene yet. It must not invent a column. |
+| 9 | TP53-mutated primary tumors | Mutation table (added Nov 13) | Primary Tumor; semi-join `mutation` with gene = TP53. Expected 264 samples. |
 | 10 | which patients should get endocrine therapy? | Clinical decision (must decline) | No steps. Says the tool builds research cohorts and can't recommend treatment. |
+| 11 | primary tumors without a TP53 mutation | Wild type (GAPS #31) | has_mutation = True first, then anti-join TP53. Expected 527 (837 if it skips has_mutation). |
+| 12 | primary tumors with both TP53 and PIK3CA mutations | "Both" (GAPS #32) | One semi-join per gene. Expected 57 (480 if it uses one step with `in`). |
+| 13 | HER2-mutated primary tumors | Gene alias (GAPS #33) | gene = ERBB2, and says HER2 status is a different (clinical) thing. Expected 23. |
+| 14 | primary tumors that responded to chemotherapy | Data can't answer | No treatment-response data: says so in cannot_answer (may draft "primary tumors" only). |
 
 ## Results
 
-Date tested: ____  Model: ____  Prompt version: ____
+Date tested: Nov 13, 22:41 (E)  Model: NVIDIA nvidia/nemotron-3-ultra-550b-a55b  Prompt version: v1. Requests 12–14 were added after this run.
 
 | # | Score | What the draft did | Sample count (draft / expected) | Smallest fix |
 |---|---|---|---|---|
-| 1 | | | / 731 | |
-| 2 | | | / | |
-| 3 | | | / | |
-| 4 | | | / | |
-| 5 | | | / | |
-| 6 | | | / | |
-| 7 | | | / | |
-| 8 | | | / | |
-| 9 | | | n/a | |
-| 10 | | | n/a | |
+| 1 | One edit away | Plain inner join on slides (by design: the tool flags the 45 duplicates) | 731 / 731 | Starred fix (semi-join) |
+| 2 | Correct | Primary Tumor + semi-join slides starting with frozen | 1093 / 1093 | |
+| 3 | Wrong | Used `ER_Status_nature2012` (2012 study, covers 782 of 1,101 tumors) | 599 / 808 | Use `breast_carcinoma_estrogen_receptor_status` (prompt v2) |
+| 4 | Wrong | Used the three `*_nature2012` status columns | 123 / 158 | Main ER/PR columns + both HER2 tests (prompt v2) |
+| 5 | Correct | Semi-join on patient_id with allow_cross_sample | 139 / 139 | |
+| 6 | Correct | All five has_* flags on primary tumors | 535 / 535 | |
+| 7 | One edit away | Understood the typos; plain inner join on slides as in #1 | 731 / 731 | Starred fix (semi-join) |
+| 8 | Wrong | Used `Age_at_Initial_Pathologic_Diagnosis_nature2012` | 223 / 297 | Use `age_at_initial_pathologic_diagnosis` (prompt v2) |
+| 9 | Correct | Semi-join mutation, gene = TP53 | 264 / 264 | |
+| 10 | Correctly declined | No steps; no treatment advice | decline | |
+| 11 | Correct | has_mutation = True, then anti-join TP53 | 527 / 527 | |
+| 12 | not run yet | | / 57 | |
+| 13 | not run yet | | / 23 | |
+| 14 | not run yet | | decline | |
 
-**Total correct or one edit away:** __ / 10
+**Total correct or one edit away (prompt v1):** 8 / 11 run. All 3 misses had one cause: the AI picked the `*_nature2012` columns, which cover only part of the samples. Prompt v2 fixes this; rerun all 14 with v2.
 
 ## Prompt changes
 
-Log each change to the prompt in `llm.py` and rerun all 10 after it, because a fix for one request can break another.
+Log each change to the prompt in `llm.py` and rerun all 14 after it, because a fix for one request can break another.
 
 | Version | What changed | Why (which request failed) | Score after |
 |---|---|---|---|
-| v1 | Starting prompt | | |
+| v1 | Starting prompt (plus mutation rules: wild type, "both" genes, gene symbols) | | 8 / 11 |
+| v2 | Prefer the main clinical columns over `*_nature2012`; spell out HER2-positive / HER2-negative / triple-negative with both HER2 tests (A, Nov 13) | #3, #4, #8 used `*_nature2012` columns | rerun pending |
 
 <!-- AUTOMATIC RESULTS START: written by scripts/run_ai_eval.py, edits here are overwritten -->
 ## Latest automatic run

@@ -27,8 +27,10 @@ problems with one-click fixes, and exports `cohort_samples.csv` (one row per 15-
   first (GAPS #31: TP53 wild type 527, not 837; the engine warns and offers that fix).
   Also warns `any_vs_all` (`gene in [A, B]` = A or B; "both" = one step each, #32) and
   `value_not_found` (HER2 → ERBB2, typos; #33).
-- `cohort_studio/llm.py`: optional Claude drafting (`claude-opus-5-5`, structured output, user-supplied key,
-  server-side fallbacks). It sees only schema, never rows. Not yet tested with a real key.
+- `cohort_studio/llm.py`: optional AI drafting (E). Claude (`claude-opus-5-5`, key in the sidebar or
+  ANTHROPIC_API_KEY) by default; NVIDIA (`llm_nvidia.py`, NVIDIA_API_KEY) if no Claude key (the team uses NVIDIA;
+  Groq was dropped: its free-tier rate limits failed). Sees only schema, never rows. Eval: `scripts/run_ai_eval.py`,
+  `docs/AI_EVAL.md`, results in `docs/ai_eval_results.md` (1 of 10 run so far).
 - `cohort_studio/advice.py`: which fix the UI stars (GAPS #21), with a reason and caveats on the others.
 - `cohort_studio/versions.py`: session-only cohort versions and the diff between two of them (GAPS #26).
 - `cohort_studio/export.py`: cohort_samples.csv, cohort.json, rebuild_cohort.py.
@@ -39,7 +41,7 @@ problems with one-click fixes, and exports `cohort_samples.csv` (one row per 15-
 - `cohort_studio/makeup.py`: after each step, TVD of site / PAM50 / ER / age-band mix before vs after (note at
   ≥ 0.10; a shift on a filtered attribute is "expected"). Demo protein step: site 0.14, PAM50 0.16.
 - `app.py`: Streamlit UI. `run_cohort.py`: CLI (`--verify`, `--why ID`, `--makeup`; exit 2 = unresolved problems, 3 = SQL
-  disagrees). `tests/`: pytest; `test_answer_key.py` holds 30 trap cases with SQL answer keys.
+  disagrees). `tests/`: pytest; `test_answer_key.py` holds 31 trap cases with SQL answer keys.
 
 ## Known-good numbers (demo)
 Primary tumor 1,101 → has RNA 1,097 → has protein 742 → join diagnostic slides = 776 rows / 731 samples (inflated)
@@ -56,6 +58,6 @@ All five data layers = 535; plus a diagnostic slide = 531 (572 rows if inner-joi
 ## Open TODOs
 - Test AI drafting on 5–10 requests; more trap examples and tests
 - OR groups (`{"any"/"all": [...]}`) and patient-level matching (`allow_cross_sample`) work in the engine,
-  the builder (and/or switch per condition; nested groups read-only) and the SQL check; all 30 trap cases pass. Next gaps in docs/GAPS.md
+  the builder (and/or switch per condition; nested groups read-only) and the SQL check; all 31 trap cases pass. Next gaps in docs/GAPS.md
 - More joinable tables (mutation/protein values); add the demo video link to the README
 - Run `pytest -q` and the app after every change

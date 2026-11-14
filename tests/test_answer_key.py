@@ -305,6 +305,17 @@ CASES = [
         notes="Uses the binary gene-level matrix; this identifies mutation presence, not a specific variant.",
     ),
     Case(
+        "died_of_disease",
+        "Primary tumors whose patient died of the disease (DSS = 1)",
+        """SELECT s.sample_id FROM samples s JOIN survival v ON v.sample_id = s.sample_id
+           WHERE s.sample_type = 'Primary Tumor' AND v.DSS = 1""",
+        steps=[PRIMARY, _semi("survival", [{"column": "DSS", "operator": "eq", "values": ["1"]}])],
+        expected_n=83,
+        # DSS has blanks, so pandas stores it as 1.0. The yes/1/true rule (GAPS #10) briefly turned "1" into
+        # "true" before the number comparison and this returned 0. Fixed Nov 13.
+        notes="Number match on a float column with blanks: 1 must equal 1.0.",
+    ),
+    Case(
         "tp53_and_pik3ca_primary",
         "Primary tumors with both a TP53 and a PIK3CA mutation",
         """SELECT sample_id FROM samples WHERE sample_type = 'Primary Tumor'
