@@ -28,8 +28,8 @@ problems with one-click fixes, and exports `cohort_samples.csv` (one row per 15-
   Also warns `any_vs_all` (`gene in [A, B]` = A or B; "both" = one step each, #32) and
   `value_not_found` (HER2 → ERBB2, typos; #33).
 - `cohort_studio/llm.py`: optional AI drafting (E). Claude (`claude-opus-5-5`, key in the sidebar or
-  ANTHROPIC_API_KEY) by default; NVIDIA (`llm_nvidia.py`, NVIDIA_API_KEY) if no Claude key; Groq is wired in but
-  `llm_groq.py` isn't committed yet. Sees only schema, never rows. Eval: `scripts/run_ai_eval.py`,
+  ANTHROPIC_API_KEY) by default; NVIDIA (`llm_nvidia.py`, NVIDIA_API_KEY) if no Claude key (the team uses NVIDIA;
+  Groq was dropped: its free-tier rate limits failed). Sees only schema, never rows. Eval: `scripts/run_ai_eval.py`,
   `docs/AI_EVAL.md`, results in `docs/ai_eval_results.md` (1 of 10 run so far).
 - `cohort_studio/advice.py`: which fix the UI stars (GAPS #21), with a reason and caveats on the others.
 - `cohort_studio/versions.py`: session-only cohort versions and the diff between two of them (GAPS #26).

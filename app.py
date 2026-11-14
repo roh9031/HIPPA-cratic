@@ -40,7 +40,7 @@ def load_example(name):
 def draft_with_ai():
     from cohort_studio.llm import draft_steps, provider
     key = ss.get("api_key") or os.environ.get("ANTHROPIC_API_KEY")
-    # NVIDIA / Groq keys come from the environment (see llm.py); the sidebar field is for a Claude key.
+    # An NVIDIA key comes from the environment (see llm.py); the sidebar field is for a Claude key.
     if not key and provider() == "claude":
         ss.ai_notes = {"error": "Add an Anthropic API key in the sidebar (or set NVIDIA_API_KEY before starting "
                                 "the app), or write the steps by hand."}

@@ -2,7 +2,7 @@
 
 Put this file in scripts/ in the team repo, then from the repo root:
 
-    source .env                               # holds ANTHROPIC_API_KEY, NVIDIA_API_KEY or GROQ_API_KEY
+    source .env                               # holds ANTHROPIC_API_KEY or NVIDIA_API_KEY
     python3 scripts/run_ai_eval.py             # all 10 requests
     python3 scripts/run_ai_eval.py 1 4 7       # only these
 
@@ -70,7 +70,7 @@ def find_draft_function():
 
 def call_draft(fn, text, api_key):
     """Pass the request first. With a Claude key, also pass it to any parameter whose name mentions a key.
-    With a Groq key, pass nothing extra: llm.py reads GROQ_API_KEY itself."""
+    With an NVIDIA key, pass nothing extra: llm.py reads NVIDIA_API_KEY itself."""
     params = inspect.signature(fn).parameters
     kwargs = {name: api_key for name in params if "key" in name.lower()} if api_key else {}
     return fn(text, **kwargs)
@@ -180,12 +180,11 @@ def main():
     labels = {
         "claude": "Claude (ANTHROPIC_API_KEY)",
         "nvidia": f"NVIDIA, model {os.environ.get('NVIDIA_MODEL', 'nvidia/nemotron-3-super-120b-a12b')} (NVIDIA_API_KEY)",
-        "groq": f"Groq, model {os.environ.get('GROQ_MODEL', 'openai/gpt-oss-120b')} (GROQ_API_KEY)",
     }
-    needed = {"claude": "ANTHROPIC_API_KEY", "nvidia": "NVIDIA_API_KEY", "groq": "GROQ_API_KEY"}
+    needed = {"claude": "ANTHROPIC_API_KEY", "nvidia": "NVIDIA_API_KEY"}
     if chosen not in labels or not os.environ.get(needed[chosen]):
         sys.exit("No key found. Put ONE of these in .env and run `source .env` (never commit or paste a key):\n"
-                 '  export ANTHROPIC_API_KEY="..."   or   export NVIDIA_API_KEY="..."   or   export GROQ_API_KEY="..."')
+                 '  export ANTHROPIC_API_KEY="..."   or   export NVIDIA_API_KEY="..."')
     if chosen != "claude":
         api_key = None   # the other providers read their own key from the environment
     provider = labels[chosen]
