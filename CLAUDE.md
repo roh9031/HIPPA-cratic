@@ -24,7 +24,7 @@ problems with one-click fixes, and exports `cohort_samples.csv` (one row per 15-
   empty, multi_sample_patients, redacted) and fixes (each fix is a replacement step list). `eq`/`in`/`ne`/`not_in`
   match numbers by value too (a float column reads 40 as 40.0). `Indeterminate` and `[...]` codes count as
   missing (GAPS #7); the SQL check mirrors this in `_cond_sql`. "Not mutated" needs `has_mutation = True`
-  first (GAPS #31: TP53 wild type 527, not 837).
+  first (GAPS #31: TP53 wild type 527, not 837; the engine warns and offers that fix).
 - `cohort_studio/llm.py`: optional Claude drafting (`claude-opus-5-5`, structured output, user-supplied key,
   server-side fallbacks). It sees only schema, never rows. Not yet tested with a real key.
 - `cohort_studio/advice.py`: which fix the UI stars (GAPS #21), with a reason and caveats on the others.

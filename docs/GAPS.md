@@ -78,6 +78,6 @@ Each has a test.
 #22 "Verify with SQL" is in the app (section 4), with `tests/test_verify.py`. #23 "Why isn't sample X" is in section 3. Both also run from the command line (`--verify`, `--why`). #29 fixed. Trap backlog #5–#12 done (all pass).
 #21 the recommended fix is starred, explained and shown first (`cohort_studio/advice.py`, `tests/test_advice.py`). #26 compares the current cohort with any earlier version from the session (`cohort_studio/versions.py`, `tests/test_versions.py`).
 
-**Next, before the Friday feature freeze:** 31 ("not mutated" warning) · 4, 25 (AI eval, "can't answer"). Then: clean-install test again after the last merge.
+**Next, before the Friday feature freeze:** 4, 25 (AI eval, "can't answer"). Then: clean-install test again after the last merge.
 
 **Done Nov 13:** #3 mutation table (C, PR #2): gene-level presence, joinable on `sample_id`, also a DuckDB view. #7 coded values (B): `Indeterminate` and `[...]` codes count as missing in the engine and in Verify with SQL. The mutation view now gives DuckDB its column types, so SQL checks stopped taking ~3.5 s per connection (test suite 6 min → under 2 min).
