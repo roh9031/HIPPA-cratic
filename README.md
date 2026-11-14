@@ -121,4 +121,4 @@ flags both the inflation and the 100 rows that attach another sample's record (n
 ## Data and licenses
 TCGA-BRCA via UCSC Xena and NCI Imaging Data Commons (slides CC BY 3.0). See the challenge repo's
 `DATA_LICENSES.md`. No raw data is committed here. Third-party code: pandas (BSD-3), Streamlit (Apache-2.0),
-DuckDB (MIT), anthropic SDK (MIT), pytest (MIT).
+DuckDB (MIT), Altair (BSD-3), requests (Apache-2.0), anthropic SDK (MIT), pytest (MIT). AI drafting uses a model API with the user's own key (Anthropic Claude or NVIDIA build.nvidia.com); no key is stored.
