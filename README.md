@@ -56,7 +56,7 @@ streamlit run app.py                                         # the app
 python run_cohort.py examples/demo_diagnostic_slides.json    # same engine from the command line
 python run_cohort.py examples/demo_diagnostic_slides.json --verify --why TCGA-E2-A15E-01   # SQL check + trace one sample
 python run_cohort.py examples/demo_diagnostic_slides.json --makeup   # did a step change who's in the cohort?
-python run_cohort.py --ask "ER-positive primary tumors with a diagnostic slide"   # AI draft: ANTHROPIC_API_KEY (or NVIDIA_API_KEY)
+python run_cohort.py --ask "ER-positive primary tumors with a diagnostic slide"   # AI draft: ANTHROPIC_API_KEY or NVIDIA_API_KEY (in the app: paste either key in the sidebar)
 python scripts/sql.py                                        # DuckDB SQL console over the raw files
 pytest -q                                                    # 158 tests, see below
 ```

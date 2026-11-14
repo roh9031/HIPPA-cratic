@@ -15,7 +15,7 @@ import os
 import time
 
 BASE_URL = os.environ.get("NVIDIA_BASE_URL", "https://integrate.api.nvidia.com/v1")
-DEFAULT_MODEL = "nvidia/nemotron-3-super-120b-a12b"   # a hosted reasoning model with JSON-schema output
+DEFAULT_MODEL = "nvidia/nemotron-3-ultra-550b-a55b"   # the model docs/AI_EVAL.md was scored on (Nov 13)
 
 
 class NvidiaError(Exception):
@@ -24,18 +24,26 @@ class NvidiaError(Exception):
         self.status_code = status_code
 
 
+def clean_key(key):
+    """Strip spaces and quotes: `set NVIDIA_API_KEY="nvapi-..."` in cmd keeps the quotes in the value."""
+    return (key or "").strip().strip("\"'").strip()
+
+
 def available():
-    return bool(os.environ.get("NVIDIA_API_KEY"))
+    return bool(clean_key(os.environ.get("NVIDIA_API_KEY")))
 
 
 def model_name():
     return os.environ.get("NVIDIA_MODEL", DEFAULT_MODEL)
 
 
-def _post(payload, retries=4):
+def _post(payload, retries=4, api_key=None):
     import requests
 
-    headers = {"Authorization": f"Bearer {os.environ['NVIDIA_API_KEY']}", "Accept": "application/json"}
+    key = clean_key(api_key or os.environ.get("NVIDIA_API_KEY"))
+    if not key:
+        raise NvidiaError("No NVIDIA API key.", status_code=401)
+    headers = {"Authorization": f"Bearer {key}", "Accept": "application/json"}
     for attempt in range(retries + 1):
         try:
             response = requests.post(f"{BASE_URL}/chat/completions", headers=headers, json=payload, timeout=180)
@@ -65,7 +73,7 @@ def _parse(content):
     return out
 
 
-def complete_json(system_prompt, user_message, schema, name="cohort_draft"):
+def complete_json(system_prompt, user_message, schema, name="cohort_draft", api_key=None):
     """Send one request and return the parsed JSON object.
 
     Asks for JSON-schema output (OpenAI style). If the server rejects that (HTTP 400), retries once with
@@ -83,9 +91,10 @@ def complete_json(system_prompt, user_message, schema, name="cohort_draft"):
     }
     try:
         result = _post({**base, "response_format": {"type": "json_schema",
-                                                    "json_schema": {"name": name, "schema": schema}}})
+                                                    "json_schema": {"name": name, "schema": schema}}},
+                       api_key=api_key)
     except NvidiaError as err:
         if err.status_code != 400:
             raise
-        result = _post({**base, "nvext": {"guided_json": schema}})
+        result = _post({**base, "nvext": {"guided_json": schema}}, api_key=api_key)
     return _parse(result["choices"][0]["message"].get("content"))

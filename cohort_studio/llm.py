@@ -156,11 +156,17 @@ def provider(api_key: str | None = None) -> str:
     chosen = os.environ.get("COHORT_LLM_PROVIDER", "").strip().lower()
     if chosen in PROVIDERS:
         return chosen
+    if _is_nvidia_key(api_key):         # an NVIDIA key pasted into the sidebar box
+        return "nvidia"
     if api_key or os.environ.get("ANTHROPIC_API_KEY"):
         return "claude"
     if os.environ.get("NVIDIA_API_KEY"):
         return "nvidia"
     return "claude"   # no key at all: the Claude path reports the missing key as before
+
+
+def _is_nvidia_key(key: str | None) -> bool:
+    return (key or "").strip().strip("\"'").startswith("nvapi-")
 
 
 def _finish(out: dict) -> dict:
@@ -172,7 +178,8 @@ def draft_steps(request: str, api_key: str | None = None) -> dict:
     """Return {"steps": [...], "assumptions": [...], "cannot_answer": str|None}. Raises RuntimeError on failure."""
     chosen = provider(api_key)
     if chosen == "nvidia":
-        return _draft_via("llm_nvidia", "NVIDIA", "NVIDIA_API_KEY", SYSTEM + schema_context(), request)
+        return _draft_via("llm_nvidia", "NVIDIA", "NVIDIA_API_KEY", SYSTEM + schema_context(), request,
+                          api_key if _is_nvidia_key(api_key) else None)
     return _draft_with_claude(request, api_key)
 
 
@@ -191,7 +198,8 @@ def _draft_with_claude(request: str, api_key: str | None) -> dict:
             messages=[{"role": "user", "content": request}],
         )
     except anthropic.AuthenticationError:
-        raise RuntimeError("The API key was rejected. Check it and try again.")
+        raise RuntimeError("The Claude (Anthropic) API key was rejected. Check it and try again. "
+                           "An NVIDIA key starts with nvapi- and is detected automatically.")
     except anthropic.RateLimitError:
         raise RuntimeError("Rate limited by the API. Wait a moment and retry.")
     except anthropic.APIConnectionError:
@@ -211,7 +219,8 @@ def _draft_with_claude(request: str, api_key: str | None) -> dict:
     return _finish(out)
 
 
-def _draft_via(module_name: str, label: str, key_name: str, prompt: str, request: str) -> dict:
+def _draft_via(module_name: str, label: str, key_name: str, prompt: str, request: str,
+              api_key: str | None = None) -> dict:
     """Send the prompt through an OpenAI-compatible backend module and turn failures into clear messages."""
     import importlib
     try:
@@ -219,7 +228,7 @@ def _draft_via(module_name: str, label: str, key_name: str, prompt: str, request
     except ImportError:
         raise RuntimeError(f"{module_name}.py is missing from the cohort_studio folder.")
     try:
-        out = backend.complete_json(prompt, request, SCHEMA)
+        out = backend.complete_json(prompt, request, SCHEMA, api_key=api_key)
     except ImportError as e:
         raise RuntimeError(f"A package {label} needs isn't installed ({e.name}). Run: pip install {e.name}")
     except json.JSONDecodeError:
@@ -227,7 +236,8 @@ def _draft_via(module_name: str, label: str, key_name: str, prompt: str, request
     except Exception as e:
         status = getattr(e, "status_code", None)
         if status in (401, 403):
-            raise RuntimeError(f"The {label} API key was rejected. Check {key_name} and try again.")
+            raise RuntimeError(f"The {label} API key was rejected. Check that it is complete and still active "
+                               f"on build.nvidia.com, with no extra spaces ({key_name} or the sidebar box).")
         if status == 404:
             raise RuntimeError(f"{label} doesn't know that model. Check the model name ({e}).")
         if status in (413, 429):

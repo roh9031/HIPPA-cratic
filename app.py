@@ -40,10 +40,10 @@ def load_example(name):
 def draft_with_ai():
     from cohort_studio.llm import draft_steps, provider
     key = ss.get("api_key") or os.environ.get("ANTHROPIC_API_KEY")
-    # An NVIDIA key comes from the environment (see llm.py); the sidebar field is for a Claude key.
+    # The sidebar box takes a Claude key or an NVIDIA key (nvapi-..., routed to NVIDIA in llm.py).
     if not key and provider() == "claude":
-        ss.ai_notes = {"error": "Add an Anthropic API key in the sidebar (or set NVIDIA_API_KEY before starting "
-                                "the app), or write the steps by hand."}
+        ss.ai_notes = {"error": "Paste a Claude or NVIDIA (nvapi-...) API key in the sidebar, or write the steps "
+                                "by hand."}
         return
     try:
         out = draft_steps(ss.request, api_key=key)
@@ -66,8 +66,9 @@ with st.sidebar:
         st.error("Run `python data/tcga-brca/fetch.py` in the challenge repo, or set ONCOSYS_DATA. "
                  "A CHANGED file doesn't match the event's frozen checksum: don't use it for judged results.")
     st.header("AI drafting (optional)")
-    st.text_input("Anthropic API key", type="password", key="api_key",
-                  help="Used only for this session, never saved. Leave blank to build steps by hand.")
+    st.text_input("API key (Claude or NVIDIA)", type="password", key="api_key",
+                  help="A Claude key, or an NVIDIA key starting with nvapi- (detected automatically). "
+                       "Used only for this session, never saved. Leave blank to build steps by hand.")
     st.header("Examples")
     for name in EXAMPLES:
         st.button(name.replace("_", " "), on_click=load_example, args=(name,), width="stretch")
