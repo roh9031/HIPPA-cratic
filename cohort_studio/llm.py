@@ -1,15 +1,21 @@
-"""Draft cohort steps from a plain-English request with Claude.
+"""Draft cohort steps from a plain-English request with Claude (default), NVIDIA or Groq.
 
 The model only *drafts* the step list. The user edits it, and the deterministic
 engine runs it and does every count and check. The model never sees patient rows,
 only table and column names plus the allowed values of short categorical columns.
 
-Needs an API key supplied by the user (ANTHROPIC_API_KEY or passed in). Never commit one.
+Needs an API key supplied by the user. Never commit one.
+- Claude (default): ANTHROPIC_API_KEY, or a key passed in (the app's sidebar field).
+- NVIDIA: NVIDIA_API_KEY, used when no Claude key is available (see llm_nvidia.py).
+- Groq: GROQ_API_KEY, used when there's no Claude or NVIDIA key (see llm_groq.py).
+- To choose explicitly, set COHORT_LLM_PROVIDER to "claude", "nvidia" or "groq".
 """
 from __future__ import annotations
 
 import functools
 import json
+import os
+import re
 
 from . import data, engine
 
@@ -77,6 +83,65 @@ def schema_context() -> str:
     return "\n\n".join(parts)
 
 
+# --- Compact schema description for providers with small per-minute token limits (Groq's free plan
+# --- allows 8,000 tokens a minute, input and output together). Claude always gets the full version above.
+
+WIDE_TABLE = 40            # tables with more columns than this are trimmed in the compact version
+GROQ_PROMPT_BUDGET = 5000  # rough token budget for the whole prompt, leaving room for the model's answer
+CORE_WORDS = ("receptor", "her2", "estrogen", "progesterone", "stage", "age", "gender", "histolog",
+              "menopaus", "vital", "race", "ethnic", "lymph", "metasta", "tumor", "pathologic", "sample_type")
+STOP_WORDS = {"with", "have", "that", "from", "both", "data", "also", "which", "their", "tumors", "tumor",
+              "primary", "patients", "patient", "samples", "sample", "slide", "slides", "every", "type"}
+
+
+def _describe_compact(df, keep) -> str:
+    """Like _describe_columns, but text columns get no example value and only `keep` columns get details."""
+    lines, others = [], []
+    for c in df.columns:
+        s = df[c]
+        vals = s.dropna().unique()
+        if len(vals) == 0 or str(c).startswith("_"):
+            continue                      # empty columns and internal "_" columns carry no meaning here
+        if not keep(c):
+            others.append(str(c))
+            continue
+        if len(vals) <= 12:
+            shown = ", ".join(repr(str(v)) for v in sorted(map(str, vals)))
+            lines.append(f"  - {c}: one of [{shown}]")
+        elif str(s.dtype) in ("int64", "float64"):
+            lines.append(f"  - {c}: number ({s.min()} to {s.max()})")
+        else:
+            lines.append(f"  - {c}: text")
+    return "\n".join(lines), others
+
+
+def schema_context_compact(request: str, with_other_names: bool = True) -> str:
+    """A shorter schema: every small table in full; wide tables (clinical) show details only for columns
+    that match common clinical words or words in the request, and list the rest by name."""
+    words = {w for w in re.findall(r"[a-z0-9]{4,}", request.lower()) if w not in STOP_WORDS}
+
+    def relevant(col):
+        name = str(col).lower()
+        return any(w in name for w in CORE_WORDS) or any(w in name for w in words)
+
+    tables = [("BASE TABLE (every cohort starts here): sample_manifest, one row per sample.", data.load("samples"))]
+    tables += [(f"JOINABLE TABLE `{n}`: {m['about']}", data.load(n)) for n, m in data.TABLES.items()]
+    parts = []
+    for title, df in tables:
+        wide = len(df.columns) > WIDE_TABLE
+        details, others = _describe_compact(df, relevant if wide else (lambda c: True))
+        part = title + "\n" + details
+        if others and with_other_names:
+            part += ("\n  - other columns (values not shown; use only if the request names them): "
+                     + ", ".join(others))
+        parts.append(part)
+    return "\n\n".join(parts)
+
+
+def _estimate_tokens(text: str) -> int:
+    return len(text) // 3   # deliberately pessimistic (about 4 characters per token is typical)
+
+
 SYSTEM = """You translate a researcher's cohort request into steps for Cohort Studio, a tool for TCGA-BRCA.
 
 Step types (JSON):
@@ -102,8 +167,39 @@ SCHEMA
 """
 
 
+PROVIDERS = ("claude", "nvidia", "groq")
+
+
+def provider(api_key: str | None = None) -> str:
+    """Which AI drafts the steps: "claude", "nvidia" or "groq"."""
+    chosen = os.environ.get("COHORT_LLM_PROVIDER", "").strip().lower()
+    if chosen in PROVIDERS:
+        return chosen
+    if api_key or os.environ.get("ANTHROPIC_API_KEY"):
+        return "claude"
+    if os.environ.get("NVIDIA_API_KEY"):
+        return "nvidia"
+    if os.environ.get("GROQ_API_KEY"):
+        return "groq"
+    return "claude"   # no key at all: the Claude path reports the missing key as before
+
+
+def _finish(out: dict) -> dict:
+    out["steps"] = [engine.clean_step(s) for s in out.get("steps", [])]
+    return out
+
+
 def draft_steps(request: str, api_key: str | None = None) -> dict:
     """Return {"steps": [...], "assumptions": [...], "cannot_answer": str|None}. Raises RuntimeError on failure."""
+    chosen = provider(api_key)
+    if chosen == "groq":
+        return _draft_with_groq(request)
+    if chosen == "nvidia":
+        return _draft_via("llm_nvidia", "NVIDIA", "NVIDIA_API_KEY", SYSTEM + schema_context(), request)
+    return _draft_with_claude(request, api_key)
+
+
+def _draft_with_claude(request: str, api_key: str | None) -> dict:
     import anthropic
 
     client = anthropic.Anthropic(api_key=api_key) if api_key else anthropic.Anthropic()
@@ -135,5 +231,43 @@ def draft_steps(request: str, api_key: str | None = None) -> dict:
         out = json.loads(text)
     except json.JSONDecodeError:
         raise RuntimeError("The model returned something that isn't valid JSON. Try again.")
-    out["steps"] = [engine.clean_step(s) for s in out.get("steps", [])]
-    return out
+    return _finish(out)
+
+
+def _draft_with_groq(request: str) -> dict:
+    """Same prompt and schema as the Claude path, through Groq, with the compact schema description
+    so the request fits Groq's free-plan limit of 8,000 tokens a minute."""
+    prompt = SYSTEM + schema_context_compact(request)
+    if _estimate_tokens(prompt) > GROQ_PROMPT_BUDGET:
+        prompt = SYSTEM + schema_context_compact(request, with_other_names=False)
+    if _estimate_tokens(prompt) > GROQ_PROMPT_BUDGET:
+        raise RuntimeError(f"The prompt is about {_estimate_tokens(prompt):,} tokens, too large for Groq's free "
+                           f"plan. Use a Claude or NVIDIA key, or lower WIDE_TABLE / trim CORE_WORDS in llm.py.")
+    return _draft_via("llm_groq", "Groq", "GROQ_API_KEY", prompt, request)
+
+
+def _draft_via(module_name: str, label: str, key_name: str, prompt: str, request: str) -> dict:
+    """Send the prompt through an OpenAI-compatible backend module and turn failures into clear messages."""
+    import importlib
+    try:
+        backend = importlib.import_module(f".{module_name}", __package__)
+    except ImportError:
+        raise RuntimeError(f"{module_name}.py is missing from the cohort_studio folder.")
+    try:
+        out = backend.complete_json(prompt, request, SCHEMA)
+    except ImportError as e:
+        raise RuntimeError(f"A package {label} needs isn't installed ({e.name}). Run: pip install {e.name}")
+    except json.JSONDecodeError:
+        raise RuntimeError("The model returned something that isn't valid JSON. Try again.")
+    except Exception as e:
+        status = getattr(e, "status_code", None)
+        if status in (401, 403):
+            raise RuntimeError(f"The {label} API key was rejected. Check {key_name} and try again.")
+        if status == 404:
+            raise RuntimeError(f"{label} doesn't know that model. Check the model name ({e}).")
+        if status in (413, 429):
+            raise RuntimeError(f"{label} rate limit or size limit hit. Wait a minute and retry. ({e})")
+        if "Connection" in type(e).__name__ or "Connection" in str(e):
+            raise RuntimeError(f"Couldn't reach the {label} API. Check your connection.")
+        raise RuntimeError(f"{label} API error{f' {status}' if status else ''}: {e}")
+    return _finish(out)

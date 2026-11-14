@@ -2,7 +2,7 @@
 
 Put this file in scripts/ in the team repo, then from the repo root:
 
-    export ANTHROPIC_API_KEY="your-key"       # this terminal only; never commit it
+    source .env                               # holds ANTHROPIC_API_KEY, NVIDIA_API_KEY or GROQ_API_KEY
     python3 scripts/run_ai_eval.py             # all 10 requests
     python3 scripts/run_ai_eval.py 1 4 7       # only these
 
@@ -69,9 +69,10 @@ def find_draft_function():
 
 
 def call_draft(fn, text, api_key):
-    """Pass the request first, and the key to any parameter whose name mentions a key."""
+    """Pass the request first. With a Claude key, also pass it to any parameter whose name mentions a key.
+    With a Groq key, pass nothing extra: llm.py reads GROQ_API_KEY itself."""
     params = inspect.signature(fn).parameters
-    kwargs = {name: api_key for name in params if "key" in name.lower()}
+    kwargs = {name: api_key for name in params if "key" in name.lower()} if api_key else {}
     return fn(text, **kwargs)
 
 
@@ -144,11 +145,11 @@ def run_one(req, draft, api_key):
     return record
 
 
-def write_report(records, path):
+def write_report(records, path, provider):
     lines = [
         "# AI drafting results",
         "",
-        f"Run {dt.datetime.now().strftime('%Y-%m-%d %H:%M')}. Automatic scores are suggestions: "
+        f"Run {dt.datetime.now().strftime('%Y-%m-%d %H:%M')} with {provider}. Automatic scores are suggestions: "
         "check each draft below and record the final score in `docs/ai_eval.md`.",
         "",
         "| # | Request | Suggested score | Samples (draft / expected) | Duplicate rows | Seconds |",
@@ -175,8 +176,20 @@ def write_report(records, path):
 
 def main():
     api_key = os.environ.get("ANTHROPIC_API_KEY")
-    if not api_key:
-        sys.exit('No key found. In this terminal, run: export ANTHROPIC_API_KEY="your-key"  (never commit it)')
+    chosen = llm.provider(api_key) if hasattr(llm, "provider") else ("claude" if api_key else "none")
+    labels = {
+        "claude": "Claude (ANTHROPIC_API_KEY)",
+        "nvidia": f"NVIDIA, model {os.environ.get('NVIDIA_MODEL', 'nvidia/nemotron-3-super-120b-a12b')} (NVIDIA_API_KEY)",
+        "groq": f"Groq, model {os.environ.get('GROQ_MODEL', 'openai/gpt-oss-120b')} (GROQ_API_KEY)",
+    }
+    needed = {"claude": "ANTHROPIC_API_KEY", "nvidia": "NVIDIA_API_KEY", "groq": "GROQ_API_KEY"}
+    if chosen not in labels or not os.environ.get(needed[chosen]):
+        sys.exit("No key found. Put ONE of these in .env and run `source .env` (never commit or paste a key):\n"
+                 '  export ANTHROPIC_API_KEY="..."   or   export NVIDIA_API_KEY="..."   or   export GROQ_API_KEY="..."')
+    if chosen != "claude":
+        api_key = None   # the other providers read their own key from the environment
+    provider = labels[chosen]
+    print(f"Provider: {provider}")
     chosen = {int(a) for a in sys.argv[1:]} or {r["n"] for r in REQUESTS}
     draft = find_draft_function()
     print(f"Using llm.{draft.__name__}\n")
@@ -191,7 +204,7 @@ def main():
         records.append(record)
 
     out = ROOT / "docs" / "ai_eval_results.md"
-    write_report(records, out)
+    write_report(records, out, provider)
     passed = sum(r["score"].startswith(("Correct", "One edit away")) for r in records)
     print(f"{passed}/{len(records)} correct or one edit away by automatic check. Details: {out}")
 
