@@ -172,6 +172,19 @@ def _add_cond(uid: int) -> None:
     st.session_state.b_conds.setdefault(uid, []).append(_new_uid())
 
 
+def _table_changed(uid: int) -> None:
+    """A join's table was switched: the old table's conditions mean nothing on the new one (e.g. slide_kind
+    "starts with diagnostic" on mutation), so drop them and start one fresh condition on the new table."""
+    if _gone(uid):
+        return
+    ss = st.session_state
+    for cuid in ss.b_conds.get(uid) or []:
+        _drop_keys(f"{WIDGET_PREFIX}{uid}_{cuid}_")
+    if isinstance(ss.b_steps.get(uid), dict):
+        ss.b_steps[uid] = {k: v for k, v in ss.b_steps[uid].items() if k != "where"}
+    ss.b_conds[uid] = [_new_uid()]
+
+
 def _remove_cond(uid: int) -> None:
     if _gone(uid):
         return
@@ -333,7 +346,8 @@ def _step(number: int, uid: int, prefix: list[dict]) -> tuple[dict, bool]:
             ss.setdefault(on_key, seed.get("on") or "sample_id")
             ss.setdefault(how_key, seed.get("how") or "inner")
             with st.container(horizontal=True, vertical_alignment="bottom"):
-                table = st.selectbox("Table", _with_current(list(data.TABLES), ss[tbl_key]), key=tbl_key)
+                table = st.selectbox("Table", _with_current(list(data.TABLES), ss[tbl_key]), key=tbl_key,
+                                     on_change=_table_changed, args=(uid,))
                 on = st.selectbox("Match on", list(data.KEYS), key=on_key)
                 how = st.selectbox("What the join does", list(HOW_LABELS), key=how_key,
                                    format_func=lambda h: HOW_LABELS[h])
