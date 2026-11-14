@@ -9,7 +9,22 @@ rebuilds the cohort.
 
 **Team HIPPA-cratics:** Rohini Bidnurmath (captain) · Rae Michelle · Hanpeng Yang · Sonal Gabburi · Ronit Jariwala
 
-**Demo video:** _add link_
+**Demo video:** _add link_ (screen recording, no audio). What it shows, in order:
+1. **Main workflow:** a plain-English request becomes 4 steps; the funnel goes 1,101 → 1,097 → 742 →
+   **776 rows / 731 samples**. The diagnostic-slide join is flagged (45 tumors have two slides), the recommended fix
+   is applied in one click, and rows = samples = 731.
+2. **Dropdown builder with and/or:** HER2-positive by either lab test (**or**) = 197 tumors, by both (**and**) = 45.
+   *Compare with an earlier version* lists the samples that changed.
+3. **Verify with SQL:** an independent DuckDB query over the raw files gets 731 too, matching at every step.
+4. **Why isn't a sample in my cohort?** `TCGA-E2-A15E-01` was removed at the slide step (its only slide is frozen).
+5. **Did a step change who's in the cohort?** Requiring protein data shifts the site mix (TVD 0.14) and the PAM50
+   mix (0.16).
+6. **A different join that inflates:** survival joined on `patient_id` gives 907 rows / 807 samples and 100 records
+   linked to another sample of the same patient; the recommended fix (match on `sample_id`) gives 807.
+7. **Mutation traps:** "both TP53 and PIK3CA" written as one step means either gene (480); the fix gives 57.
+   `HER2` as a gene name suggests `ERBB2`.
+8. **Review and export:** human-review notice with a visible limitation, Data notes, and the exports
+   (`cohort_samples.csv`, `cohort.json`, `rebuild_cohort.py`).
 
 **Teammates, start here:** [docs/TEAM_PLAN.md](docs/TEAM_PLAN.md) (roles, timeline, git workflow) ·
 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) (tech stack, system design, open questions)
