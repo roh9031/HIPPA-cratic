@@ -228,9 +228,9 @@ def _condition(uid: int, cuid: int, columns: list[str], values: dict[str, list[s
     val_key = f"{WIDGET_PREFIX}{uid}_{cuid}_vals"
     num_key = f"{WIDGET_PREFIX}{uid}_{cuid}_num"
     seed_vals = [str(v) for v in (seed.get("values") or [])]
-    first = next((c for c in PREFERRED_COLUMNS if c in columns), next((c for c in columns if c not in data.KEYS),
+    default_col = next((c for c in PREFERRED_COLUMNS if c in columns), next((c for c in columns if c not in data.KEYS),
                                                                       columns[0] if columns else ""))
-    ss.setdefault(col_key, seed.get("column") or first)
+    ss.setdefault(col_key, seed.get("column") or default_col)
     ss.setdefault(opr_key, seed.get("operator") or "in")
     ss.setdefault(val_key, seed_vals)
     ss.setdefault(num_key, seed_vals[0] if seed_vals else "")
