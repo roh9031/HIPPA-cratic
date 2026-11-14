@@ -21,6 +21,15 @@ from . import data
 def connect(ddir: str | None = None):
     import duckdb  # only needed for tests and the SQL console
 
+    if data.is_custom(ddir):                  # the user's own tables (custom.py): one plain view per CSV
+        con = duckdb.connect()
+        con.sql(f"CREATE VIEW samples AS SELECT * FROM read_csv({_lit(data.file_path(data.BASE_FILE, ddir).as_posix())})")
+        for name, meta in data.TABLES.items():
+            if name != "samples":
+                con.sql(f"CREATE VIEW {_q(name)} AS SELECT * FROM read_csv("
+                        f"{_lit(data.file_path(meta['file'], ddir).as_posix())})")
+        return con
+
     # Only *which* file to read comes from data.py (so a chosen release is used, see data.file_path); the
     # reading itself is DuckDB's, independent of the engine's loaders.
     f = {rel: data.file_path(rel, ddir).as_posix() for rel in
@@ -241,7 +250,8 @@ def trace(steps: list[dict], sample_id: str, ddir: str | None = None) -> dict:
             + "\nORDER BY 1").fetchall()
         path = [{"step": i, "rows for this sample": n} for i, n in counts]
         if counts[0][1] == 0:
-            in_slides = con.sql(f"SELECT count(*) FROM slides WHERE sample_id = {_lit(sid)}").fetchall()[0][0]
+            in_slides = 0 if data.is_custom(ddir) else con.sql(
+                f"SELECT count(*) FROM slides WHERE sample_id = {_lit(sid)}").fetchall()[0][0]
             why = f"`{sid}` isn't in sample_manifest.csv, so no cohort can include it."
             if in_slides:
                 why += (f" It does have {in_slides} slide(s) in slide_manifest.csv: one of the samples missing from "

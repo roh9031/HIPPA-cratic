@@ -22,6 +22,11 @@ problems with one-click fixes, and exports `cohort_samples.csv` (one row per 15-
   Releases: `ONCOSYS_RELEASE` (folder or name under `<data>/releases/`), `run_cohort.py --release`, the sidebar
   box, or ONCOSYS_DATA pointed at a release folder. `data.file_path()` picks the release's copy of a file if it
   has one, else the original; sqlcheck reads the same paths. `tests/test_release.py`.
+- `cohort_studio/custom.py`: **Use your own data** (sidebar). CSV uploads or Supabase (REST, user's URL + key)
+  -> `build()` writes a folder (sample_manifest.csv + one CSV per table, keys renamed sample_id/patient_id,
+  marker file `data.CUSTOM_MARK`) -> `activate()` swaps `data.TABLES` in place and sets ONCOSYS_DATA.
+  `data._load` and `sqlcheck.connect` have a plain-CSV path for it; makeup, Data notes, AI and examples are off.
+  Synthetic example: `examples/byod_synthetic/`. Tests: `tests/test_custom.py`.
 - `cohort_studio/engine.py`: steps are JSON (`filter` / `join` with how inner|left|semi|anti / `collapse`).
   `run()` returns the final df plus per-step results with warnings (inflation, cross_sample, missing_values, any_vs_all, value_not_found, unsequenced_mutation,
   empty, multi_sample_patients, redacted) and fixes (each fix is a replacement step list). `eq`/`in`/`ne`/`not_in`

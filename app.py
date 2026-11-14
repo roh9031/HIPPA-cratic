@@ -10,7 +10,7 @@ import altair as alt
 import pandas as pd
 import streamlit as st
 
-from cohort_studio import advice, builder, data, engine, export, versions
+from cohort_studio import advice, builder, custom, data, engine, export, versions
 
 st.set_page_config(page_title="Cohort Studio", layout="wide")
 
@@ -18,6 +18,11 @@ EXAMPLES = {p.stem: json.loads(p.read_text(encoding="utf-8")) for p in sorted(Pa
 DEFAULT = "demo_diagnostic_slides"
 
 ss = st.session_state
+# Your own data (cohort_studio/custom.py) lives in the folder ONCOSYS_DATA names; its table list is in-process
+# state, so re-register it if a code reload reset data.TABLES while that folder is still in use.
+if data.is_custom() and "clinical" in data.TABLES:
+    custom.activate(data.data_dir())
+CUSTOM = data.is_custom()
 if "request" not in ss:
     ex = EXAMPLES.get(DEFAULT, {"request": "", "steps": []})
     ss.request = ex["request"]
@@ -35,6 +40,12 @@ def load_example(name):
     ss.request = EXAMPLES[name]["request"]
     set_steps(EXAMPLES[name]["steps"])
     ss.ai_notes = None
+
+
+def byod_off():
+    custom.deactivate(ss.get("byod_original_data"))
+    st.cache_data.clear()
+    load_example(DEFAULT)
 
 
 def draft_with_ai():
@@ -57,6 +68,9 @@ def draft_with_ai():
 
 with st.sidebar:
     st.header("Data")
+    if CUSTOM:
+        st.success("Using **your own data**: " + ", ".join(f"`{t}`" for t in data.TABLES))
+        st.button("Back to TCGA-BRCA", on_click=byod_off, width="stretch")
     st.caption(f"`{data.data_dir()}`")
     # A changed data release (the challenge's make_release.py, or one the organizers hand out) is a folder of
     # changed raw files. Pick it here, or start the app with ONCOSYS_RELEASE set (see README).
@@ -91,25 +105,89 @@ with st.sidebar:
     if any(s == "CHANGED" for s in status.values()):
         st.warning("A file marked ⚠️ differs from the event's frozen checksum. If it's a changed release, put "
                    "it in its own folder and choose it above, so it's recorded with the results.")
-    st.header("AI drafting (optional)")
-    st.text_input("API key (Claude or NVIDIA)", type="password", key="api_key",
-                  help="A Claude key, or an NVIDIA key starting with nvapi- (detected automatically). "
-                       "Used only for this session, never saved. Leave blank to build steps by hand.")
-    st.header("Examples")
-    for name in EXAMPLES:
-        st.button(name.replace("_", " "), on_click=load_example, args=(name,), width="stretch")
+    with st.expander("Use your own data (CSV or Supabase)", expanded=False):
+        st.caption("Run the same steps and checks on your own tables. One table is the sample list (one row per "
+                   "sample); the others are joined to it by sample or patient ID. Nothing is saved or sent "
+                   "anywhere else. Try the made-up example in examples/byod_synthetic/.")
+        src = st.radio("Source", ["Upload CSV files", "Supabase"], horizontal=True, key="byod_src")
+        if src == "Upload CSV files":
+            files = st.file_uploader("CSV files, one per table", type="csv", accept_multiple_files=True,
+                                     key="byod_files")
+            if st.button("Read files", disabled=not files, width="stretch"):
+                try:
+                    ss.byod_tables = custom.read_uploads(files)
+                except Exception as e:
+                    st.error(f"Couldn't read the files: {e}")
+        else:
+            sb_url = st.text_input("Project URL", placeholder="https://<project>.supabase.co", key="byod_url")
+            sb_key = st.text_input("API key (anon or service)", type="password", key="byod_key",
+                                   help="Project Settings > API. Used only for this session, never saved. With the "
+                                        "anon key, each table needs Row Level Security off or a read policy.")
+            sb_tables = st.text_input("Table names, comma separated", placeholder="samples, labs, visits",
+                                      key="byod_tables_text")
+            if st.button("Connect and read tables", disabled=not (sb_url and sb_key and sb_tables), width="stretch"):
+                try:
+                    with st.spinner("Reading from Supabase..."):
+                        ss.byod_tables = custom.fetch_supabase(sb_url, sb_key, sb_tables.split(","))
+                except Exception as e:
+                    st.error(str(e))
+        tables = ss.get("byod_tables") or {}
+        if tables:
+            st.caption("Read: " + ", ".join(f"`{n}` ({len(d):,} rows)" for n, d in tables.items()))
+            names = list(tables)
+            guess = names[0]
+            for n in names:
+                c = custom.guess_key(tables[n], "sample")
+                if c and not tables[n][c].duplicated().any():
+                    guess = n
+                    break
+            base = st.selectbox("Which table is the sample list?", names, index=names.index(guess), key="byod_base")
+            keys = {}
+            for name, df in tables.items():
+                cols = ["(none)"] + list(df.columns)
+                g_s, g_p = custom.guess_key(df, "sample"), custom.guess_key(df, "patient")
+                c1, c2 = st.columns(2)
+                s_col = c1.selectbox(f"`{name}` sample ID", cols, index=cols.index(g_s) if g_s else 0,
+                                     key=f"byod_s_{name}")
+                p_col = c2.selectbox(f"`{name}` patient ID", cols, index=cols.index(g_p) if g_p else 0,
+                                     key=f"byod_p_{name}")
+                keys[name] = (None if s_col == "(none)" else s_col, None if p_col == "(none)" else p_col)
+            if st.button("Use this data", type="primary", width="stretch"):
+                try:
+                    folder = custom.build(tables, base, keys)
+                    if not CUSTOM:
+                        ss.byod_original_data = os.environ.get("ONCOSYS_DATA")
+                    custom.activate(folder)
+                    st.cache_data.clear()
+                    ss.request = ""
+                    ss.ai_notes = None
+                    set_steps([])
+                    st.rerun()
+                except ValueError as e:
+                    st.error(str(e))
+    if CUSTOM:
+        st.caption("AI drafting and the TCGA examples are off for your own data: build the steps with the "
+                   "dropdowns.")
+    else:
+        st.header("AI drafting (optional)")
+        st.text_input("API key (Claude or NVIDIA)", type="password", key="api_key",
+                      help="A Claude key, or an NVIDIA key starting with nvapi- (detected automatically). "
+                           "Used only for this session, never saved. Leave blank to build steps by hand.")
+        st.header("Examples")
+        for name in EXAMPLES:
+            st.button(name.replace("_", " "), on_click=load_example, args=(name,), width="stretch")
 
 # ---------------------------------------------------------------- 1. request + steps
 
 st.title("Cohort Studio")
-st.caption("Build a TCGA-BRCA cohort step by step, see who survives each step, and catch joins that count "
+st.caption(f"Build a {'cohort from your own data' if CUSTOM else 'TCGA-BRCA cohort'} step by step, see who survives each step, and catch joins that count "
            "samples twice. Research use only: no diagnosis, treatment advice or clinical claims.")
 
 st.subheader("1 · Describe the cohort")
 c1, c2 = st.columns([5, 1])
 c1.text_input("Request", key="request", label_visibility="collapsed",
               placeholder="e.g. ER-positive primary tumors with RNA data and a diagnostic slide")
-c2.button("Draft steps with AI", on_click=draft_with_ai, width="stretch")
+c2.button("Draft steps with AI", on_click=draft_with_ai, width="stretch", disabled=CUSTOM)
 
 notes = ss.get("ai_notes")
 if notes:
@@ -203,7 +281,7 @@ def _makeup(steps_json: str):
     return makeup_shifts(json.loads(steps_json))
 
 
-if not any(r.error for r in results):
+if not CUSTOM and not any(r.error for r in results):     # makeup uses TCGA-BRCA columns (PAM50, ER, site)
     try:
         from cohort_studio.makeup import SHIFT_TVD, describe_shift
         shifts = _makeup(json.dumps(steps, sort_keys=True))
@@ -289,10 +367,15 @@ if earlier:
             st.download_button("cohort_diff.csv", moved.to_csv(index=False), "cohort_diff.csv", "text/csv")
         st.caption(f"Earlier version's steps: `{json.dumps(pick['steps'])}`")
 
-st.warning("**Human review required.** A person should confirm the steps match the research question before "
-           "this cohort is used. **Limitation:** layer membership (`has_*`) comes from the sample manifest. "
-           "This tool doesn't check the quality of values inside each layer. It joins the clinical, survival, "
-           "slide and gene-level mutation tables; RNA, protein and copy-number values can't be filtered on.")
+if CUSTOM:
+    st.warning("**Human review required.** A person should confirm the steps match the research question "
+               "before this cohort is used. **Limitation:** your tables are used as uploaded: values aren't "
+               "quality-checked, and samples and patients are linked only through the ID columns you chose.")
+else:
+    st.warning("**Human review required.** A person should confirm the steps match the research question before "
+               "this cohort is used. **Limitation:** layer membership (`has_*`) comes from the sample manifest. "
+               "This tool doesn't check the quality of values inside each layer. It joins the clinical, survival, "
+               "slide and gene-level mutation tables; RNA, protein and copy-number values can't be filtered on.")
 
 
 @st.cache_data(show_spinner=False)
@@ -302,6 +385,8 @@ def _data_notes():
 
 
 try:
+    if CUSTOM:
+        raise RuntimeError("they compare the TCGA-BRCA files, so they're off for your own data")
     _notes = _data_notes()
     with st.expander(f"Data notes: {len(_notes)} places where the source files disagree (checked live with DuckDB)"):
         for n in _notes:

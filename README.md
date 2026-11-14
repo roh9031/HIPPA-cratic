@@ -59,14 +59,14 @@ python run_cohort.py examples/demo_diagnostic_slides.json --makeup   # did a ste
 python run_cohort.py --ask "ER-positive primary tumors with a diagnostic slide"   # AI draft: ANTHROPIC_API_KEY or NVIDIA_API_KEY (in the app: paste either key in the sidebar)
 python scripts/sql.py                                        # DuckDB SQL console over the raw files
 python run_cohort.py examples/demo_diagnostic_slides.json --release practice-B --verify   # on a changed data release
-pytest -q                                                    # 162 tests, see below
+pytest -q                                                    # 170 tests, see below
 ```
 `run_cohort.py` exits with code 2 if the cohort still has duplicates or cross-sample links, and 3 if `--verify` finds
 the SQL version disagrees. **The demo example is the careless version on purpose**, so the command above prints
 `UNRESOLVED` and exits 2: that's the tool catching the inflated join. Its output files (`cohort_samples.csv`,
 `cohort.sql`) go in the current folder.
 
-`pytest -q` runs 162 tests, all passing (known gaps are listed in [docs/GAPS.md](docs/GAPS.md)): the demo numbers, **31 cohort requests checked against independent DuckDB SQL
+`pytest -q` runs 170 tests, all passing (known gaps are listed in [docs/GAPS.md](docs/GAPS.md)): the demo numbers, **31 cohort requests checked against independent DuckDB SQL
 answer keys** (`tests/test_answer_key.py`, queries in [docs/TRAP_LOG.md](docs/TRAP_LOG.md)), the SQL check and
 sample trace (`tests/test_verify.py`), the exported rebuild script, the recommended-fix and version-compare logic, and the app itself (`tests/test_app.py`).
 
@@ -82,6 +82,23 @@ A release is a folder of changed raw files, like the ones the challenge's `make_
 Files the release contains are read from it (marked 🔁 in the sidebar); the rest, including the sample and slide
 manifests, come from the original data. Verify with SQL reads the same release files, and `cohort.json` records
 which release was used. `tests/test_release.py` checks that changed records change the cohort and that SQL agrees.
+
+### Use your own data (CSV files or Supabase)
+In the app's sidebar, **Use your own data** runs the same steps, checks, fixes, exports and Verify with SQL on a
+researcher's own tables instead of TCGA-BRCA:
+1. **Upload CSV files** (one per table), or connect a **Supabase** project: its URL, its anon or service key
+   (Project Settings > API) and the table names. Tables are read through Supabase's REST API; with the anon
+   key, each table needs Row Level Security off or a read policy. The key is used only for the session.
+2. Pick which table is the **sample list** (one row per sample) and, for each table, its sample ID and/or
+   patient ID column (guessed from the column names). Tables with several rows per sample, or keyed only by
+   patient, are detected and labelled.
+3. **Use this data.** Build the cohort with the dropdowns. **Back to TCGA-BRCA** returns to the event data.
+
+The TCGA-specific extras (the examples, AI drafting, the makeup check and Data notes) are switched off for
+your own data. A made-up example to try is in [examples/byod_synthetic](examples/byod_synthetic) (60
+synthetic patients, lab results with several rows per sample, a patient-level visits table): blood samples
+joined to `labs` give 52 rows for 28 samples, flagged, and the starred fix gives 28. Tests:
+`tests/test_custom.py`.
 
 ## The demo
 Request: *primary tumors with both RNA and protein data and a diagnostic slide*.
@@ -151,7 +168,8 @@ trap hunting, and how each was fixed, are in [docs/GAPS.md](docs/GAPS.md) and [d
   only part of the patients). We use the main clinical columns and say so.
 - AI drafts can vary between runs; a person reviews every draft, and the engine and SQL check do the counting.
 - The loaders, the SQL check's table definitions and the makeup attributes are written for TCGA-BRCA. The
-  engine's checks themselves are general (keys `sample_id` / `patient_id`).
+  engine's checks themselves are general, and **Use your own data** runs them on other tables; there, values
+  are used as uploaded and the TCGA-only extras (makeup check, Data notes, AI drafting) are off.
 - A cohort is selected for research. Nothing here is a diagnosis, risk score or clinical claim.
 
 ## Data and licenses

@@ -15,6 +15,7 @@ from pathlib import Path
 import pandas as pd
 
 KEYS = ("sample_id", "patient_id")
+CUSTOM_MARK = ".cohort_studio_custom"   # marks a folder built from the user's own tables (custom.py)
 BASE_FILE = "sample_manifest.csv"
 
 # Tables a cohort can be joined to. "grain" = what one row is.
@@ -155,8 +156,16 @@ def file_fingerprints(ddir: str | None = None) -> dict[str, str]:
     return out
 
 
+def is_custom(ddir: str | Path | None = None) -> bool:
+    return (data_dir(ddir) / CUSTOM_MARK).exists()
+
+
 @functools.lru_cache(maxsize=None)
 def _load(name: str, ddir: str | None) -> pd.DataFrame:
+    if is_custom(ddir):                       # the user's own tables: plain CSVs, keys already named
+        if name != "samples" and name not in TABLES:
+            raise KeyError(name)
+        return pd.read_csv(file_path(BASE_FILE if name == "samples" else TABLES[name]["file"], ddir))
     if name == "samples":
         return pd.read_csv(file_path(BASE_FILE, ddir))
     if name not in TABLES:

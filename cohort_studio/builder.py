@@ -161,9 +161,14 @@ def _remove(uid: int) -> None:
 def _add_step(op: str) -> None:
     ss = st.session_state
     uid, step = _new_uid(), copy.deepcopy(DEFAULT_STEPS[op])
+    if op == "join" and step.get("table") not in data.TABLES:      # your own data: no `slides` table
+        step["table"] = next((t for t in data.TABLES if t != "samples"), "samples")
+    if op == "filter" and data.is_custom():                       # no `sample_type` to filter on: start blank
+        step["where"] = []
     ss.b_uids.append(uid)
     ss.b_steps[uid] = step
-    ss.b_conds[uid] = [_new_uid() for _ in (step.get("where") or [])]
+    ss.b_conds[uid] = ([_new_uid() for _ in (step.get("where") or [])]
+                       or ([_new_uid()] if op == "filter" else []))
 
 
 def _add_cond(uid: int) -> None:

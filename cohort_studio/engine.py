@@ -268,7 +268,7 @@ def run(steps: list[dict], ddir: str | None = None):
                 df, warns = _join(df, step, i, steps, ddir)
             elif step["op"] == "collapse":
                 key = f"{step.get('level', 'sample')}_id"
-                if step.get("level", "sample") == "patient":
+                if step.get("level", "sample") == "patient" and "sample_type" in df.columns:
                     priority = {"Primary Tumor": 0, "Metastatic": 1, "Solid Tissue Normal": 2}
                     ranked = df["sample_type"].map(priority).fillna(len(priority))
                     df = (df.assign(_collapse_priority=ranked)
@@ -440,7 +440,7 @@ def _join(df, step, i, steps, ddir):
     if how in ("semi", "anti"):
         hit = df[on].isin(right[on])
         out = df[hit] if how == "semi" else df[~hit]
-        if on == "patient_id" and not allow_cross_sample:
+        if on == "patient_id" and not allow_cross_sample and "sample_id" in right.columns:
             by_sample = df["sample_id"].isin(right["sample_id"])
             only_via_patient = df[hit & ~by_sample]
             if len(only_via_patient):
