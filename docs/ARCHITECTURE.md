@@ -63,9 +63,10 @@ testable code. The model never sees patient rows.
 
 | File | Responsibility |
 |---|---|
-| `cohort_studio/data.py` | Finds the data folder (`$ONCOSYS_DATA` or `../oncosys-hackathon-challenge/data/tcga-brca`), loads and caches tables, normalises keys to `sample_id` / `patient_id`, verifies checksums. Registry of joinable tables: `TABLES`. |
+| `cohort_studio/data.py` | Finds the data folder (`$ONCOSYS_DATA` or `../oncosys-hackathon-challenge/data/tcga-brca`), loads and caches tables, normalises keys to `sample_id` / `patient_id`, verifies checksums. Registry of joinable tables: `TABLES`. **Changed releases** (the challenge's `make_release.py` format): `ONCOSYS_RELEASE`, the sidebar picker or `--release`; `file_path()` reads a file from the release if it has one, else from the original data. |
+| `cohort_studio/custom.py` | **Use your own data**: CSV uploads or a Supabase project (REST API, the user's URL and key, session only). The user picks the sample list and ID columns; `build()` writes a data folder with keys renamed to `sample_id` / `patient_id`, `activate()` swaps `data.TABLES`. The engine, fixes, builder, exports and Verify with SQL run unchanged; TCGA-only extras (makeup, Data notes, AI, examples) are off. |
 | `cohort_studio/engine.py` | Validates and runs steps. After each step: counts, inflation check, cross-sample check, missing-value note, empty-result check. At the end: multi-sample-patient note. `unresolved_problems()` gates export. |
-| `cohort_studio/llm.py` | Builds a schema description (column names plus short category values), calls Claude with a strict JSON schema, returns `steps`, `assumptions` and `cannot_answer`. |
+| `cohort_studio/llm.py` (+ `llm_nvidia.py`) | Builds a schema description (column names plus short category values), calls Claude or NVIDIA Nemotron (user's key; an `nvapi-` key is routed to NVIDIA) with a strict JSON schema, returns `steps`, `assumptions` and `cannot_answer`. Evaluated in `docs/AI_EVAL.md` (14/14). |
 | `cohort_studio/advice.py` | Ranks the fixes a warning offers: which one the UI stars, why, and what's wrong with the others. Judges a fix by what it changes, not its label, and defers to the engine if a fix is marked `recommended`. |
 | `cohort_studio/versions.py` | Remembers each distinct cohort built in a session (in session state only) and diffs two of them: counts, the samples that moved, and a one-sentence summary. |
 | `cohort_studio/export.py` | One row per unique 15-char `sample_id`. Definition JSON with funnel and file hashes. A rebuild script. |
@@ -73,7 +74,7 @@ testable code. The model never sees patient rows.
 | `cohort_studio/sqlcheck.py` | DuckDB views over the raw files. Translates a step list into one SQL query (a CTE per step) for **Verify with SQL**, and traces one sample through it for **Why isn't sample X in my cohort?**. Doesn't use the engine's code, so it's an independent check. |
 | `cohort_studio/makeup.py` | Did a step change who's in the cohort? Per step, total variation distance of the site, PAM50 subtype, ER status and age-band mix before vs after (sample lists from the same per-step DuckDB SQL, attributes from the raw files). Note at ≥ 0.10, skipped below 30 samples, "expected" when the step filters on that attribute. |
 | `app.py` | Streamlit page: 1 describe → 2 build → 3 funnel, warnings, sample trace → 4 review, Verify with SQL, export. |
-| `run_cohort.py` | Same engine from the command line. `--verify`, `--why ID` and `--makeup`. Exit code 2 if problems remain, 3 if the SQL check disagrees. |
+| `run_cohort.py` | Same engine from the command line. `--verify`, `--why ID`, `--makeup` and `--release`. Exit code 2 if problems remain, 3 if the SQL check disagrees. |
 | `scripts/sql.py` | DuckDB SQL console for writing answer keys (`-f file.sql` runs a file). |
 
 ### The data's grains (the root cause of every trap)
