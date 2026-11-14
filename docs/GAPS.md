@@ -71,7 +71,7 @@ can verify, and one limitation they can inspect* ("this data can't answer, and h
 
 ## How each gap gets closed
 
-Every fix by B or C should come with a `Case` in `tests/test_answer_key.py`: the correct answer as DuckDB SQL plus the
+Every fix by B or C should come with a `Case` in `tests/test_trap_requests.py`: the correct answer as DuckDB SQL plus the
 steps a user would build. A gap is closed when that test passes **and** the naive version is flagged.
 
 **Done Nov 11:** #1 (left joins now offer only the collapse fix), #6 (info warning plus an "exclude redacted"

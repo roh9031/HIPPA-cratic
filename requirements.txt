@@ -1,4 +1,5 @@
 pandas>=2.0
+requests>=2.31      # NVIDIA AI drafting and the Supabase connection (also installed by streamlit)
 streamlit>=1.67    # the step builder needs menu_button, horizontal containers, accept_new_options
 altair>=5.0        # the funnel chart in app.py (also installed by streamlit; listed because app.py imports it)
 anthropic>=1.0    # optional: only for "Draft steps with AI"

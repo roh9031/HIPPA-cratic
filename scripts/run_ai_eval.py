@@ -37,7 +37,7 @@ except ImportError:
     import engine
     import llm
 
-# expected_samples come from A's DuckDB answer keys (tests/test_answer_key.py, docs/TRAP_LOG.md), Nov 13.
+# expected_samples come from A's DuckDB answer keys (tests/test_trap_requests.py, docs/TRAP_LOG.md), Nov 13.
 # The prompt asks for a plain inner join on "with a slide", so the tool can show the inflation: a draft with the
 # right samples plus duplicate rows is "one edit away" (one click on the starred fix), by design.
 REQUESTS = [

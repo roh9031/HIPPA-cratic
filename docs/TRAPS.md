@@ -1,7 +1,7 @@
 # Trap backlog (Teammate A: trap hunter)
 
 Goal: think like a judge. For each request below, write the **correct** cohort as DuckDB SQL, then add it as a
-`Case` in `tests/test_answer_key.py`. If the engine disagrees with your SQL, you've found a bug: log it in
+`Case` in `tests/test_trap_requests.py`. If the engine disagrees with your SQL, you've found a bug: log it in
 [GAPS.md](GAPS.md) and give the Case a `gap="#N"` so it's tracked as an expected failure until B or C fix it.
 
 ## Workflow
@@ -10,7 +10,7 @@ Goal: think like a judge. For each request below, write the **correct** cohort a
 .venv\Scripts\activate                          # every new terminal (Mac: source .venv/bin/activate)
 python scripts/sql.py                           # SQL console: type queries ending in ;  (.tables, .cols clinical her2)
 python scripts/sql.py --cols clinical receptor  # find column names
-pytest -q -rxX tests/test_answer_key.py         # run the answer-key tests (x = known gap, X = gap fixed!)
+pytest -q -rxX tests/test_trap_requests.py         # run the answer-key tests (x = known gap, X = gap fixed!)
 ```
 
 Tables in the console: `samples` (one row per sample, the cohort base), `slides` (several per sample),

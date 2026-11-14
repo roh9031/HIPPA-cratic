@@ -1,6 +1,6 @@
 """DuckDB views over the raw files, for writing independent SQL answer keys.
 
-Used by tests/test_answer_key.py and scripts/sql.py. None of the engine's code is involved, so a SQL
+Used by tests/test_trap_requests.py and scripts/sql.py. None of the engine's code is involved, so a SQL
 answer here is a genuinely independent check on the engine.
 
 Views (one per file, keys renamed to sample_id / patient_id):

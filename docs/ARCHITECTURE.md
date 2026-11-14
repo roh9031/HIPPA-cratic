@@ -12,7 +12,7 @@ Edit this file when we decide.
 | UI | **Streamlit** | A web UI in pure Python with no frontend build. The brief suggests it |
 | AI (optional) | **Anthropic Claude** (`claude-opus-5-5`), structured JSON output | Turns plain English into steps. Uses a key the user supplies, never stored |
 | Independent check | **DuckDB** | The app's **Verify with SQL** button translates the steps into one SQL query and runs it on the raw files without the engine (`sqlcheck.py`), so a judge can check the count themselves |
-| Tests | **pytest** + **DuckDB** | pytest pins the demo numbers and trap behavior. DuckDB is the **independent answer key**: each test case writes the correct cohort as plain SQL on the raw files and checks that the engine's export matches it exactly (`tests/test_answer_key.py`) |
+| Tests | **pytest** + **DuckDB** | pytest pins the demo numbers and trap behavior. DuckDB is the **independent answer key**: each test case writes the correct cohort as plain SQL on the raw files and checks that the engine's export matches it exactly (`tests/test_trap_requests.py`) |
 | Data | Frozen TCGA-BRCA release from the challenge repo | Required by the rules. Checked against `sources.csv` checksums |
 
 There's no database and no separate backend. `streamlit run app.py` starts a local web server that runs the

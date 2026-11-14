@@ -78,7 +78,7 @@ the SQL version disagrees. **The demo example is the careless version on purpose
 **Demo and judged version:** the git tag **`submission`** marks the exact commit we demo and submit.
 
 `pytest -q` runs 171 tests, all passing (known gaps are listed in [docs/GAPS.md](docs/GAPS.md)): the demo numbers, **31 cohort requests checked against independent DuckDB SQL
-answer keys** (`tests/test_answer_key.py`, queries in [docs/TRAP_LOG.md](docs/TRAP_LOG.md)), the SQL check and
+answer keys** (`tests/test_trap_requests.py`, queries in [docs/TRAP_LOG.md](docs/TRAP_LOG.md)), the SQL check and
 sample trace (`tests/test_verify.py`), the exported rebuild script, the recommended-fix and version-compare logic, and the app itself (`tests/test_app.py`).
 
 ### A changed data release (an additional dataset)

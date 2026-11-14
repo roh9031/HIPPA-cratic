@@ -222,7 +222,7 @@ Verify with SQL agrees at every step.
 
 ## Batch: TRAPS.md #5–#12 (Nov 12)
 
-All passing. One real engine bug found (40x slides). The exact SQL for each answer key is in `tests/test_answer_key.py`.
+All passing. One real engine bug found (40x slides). The exact SQL for each answer key is in `tests/test_trap_requests.py`.
 
 **Exploration queries**
 ```sql

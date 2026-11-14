@@ -10,7 +10,7 @@ pytest.importorskip("duckdb")
 from cohort_studio.engine import run
 from cohort_studio.sqlcheck import verify
 
-from test_answer_key import CASES
+from test_trap_requests import CASES
 
 EX = Path(__file__).resolve().parents[1] / "examples"
 STEP_LISTS = (

@@ -37,7 +37,7 @@ Everyone writes code. The submission paperwork is split up as small side tasks i
 
 | Teammate | Role | Main coding job | Side task | Done when |
 |---|---|---|---|---|
-| **A** Rohini Bidnurmath (captain, roh9031) | **1 · Trap hunter** | Invent requests judges might give. Write the correct answer as **DuckDB SQL** and add each as a `Case` in `tests/test_answer_key.py` (template inside) plus an example in `examples/`. Hand failures to B and C. | Review and merge PRs into `main` (repo owner) | 10+ traps, each passing or logged in GAPS.md. ✅ 25 traps (Nov 12) |
+| **A** Rohini Bidnurmath (captain, roh9031) | **1 · Trap hunter** | Invent requests judges might give. Write the correct answer as **DuckDB SQL** and add each as a `Case` in `tests/test_trap_requests.py` (template inside) plus an example in `examples/`. Hand failures to B and C. | Review and merge PRs into `main` (repo owner) | 10+ traps, each passing or logged in GAPS.md. ✅ 25 traps (Nov 12) |
 | **B** Rae Michelle | **2 · Engine** | Fix what A finds. First job: patient-level matching (GAPS.md #2). | ~~Ask organizers about redacted records~~ answered Nov 12: keep and flag (GAPS.md #6) | A's tests pass |
 | **C** Hanpeng Yang | **2b · Data** | Add mutation data as a joinable table so "TP53-mutated" requests work (GAPS.md #3); then protein/RNA if time allows | List third-party code and licenses in README | Gene-level mutation requests work with a test ✅ Nov 13 |
 | **D** Sonal Gabburi | **3 · UI** | Dropdown step builder (op → table → column → value). Keep JSON as an "advanced" view. | Record the demo video | A non-coder builds the demo cohort without touching JSON. ✅ builder merged Nov 12 (demo video: recording Nov 13, README notes ready) |

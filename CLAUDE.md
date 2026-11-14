@@ -49,7 +49,7 @@ problems with one-click fixes, and exports `cohort_samples.csv` (one row per 15-
 - `cohort_studio/makeup.py`: after each step, TVD of site / PAM50 / ER / age-band mix before vs after (note at
   ≥ 0.10; a shift on a filtered attribute is "expected"). Demo protein step: site 0.14, PAM50 0.16.
 - `app.py`: Streamlit UI. `run_cohort.py`: CLI (`--verify`, `--why ID`, `--makeup`; exit 2 = unresolved problems, 3 = SQL
-  disagrees). `tests/`: pytest; `test_answer_key.py` holds 31 trap cases with SQL answer keys.
+  disagrees). `tests/`: pytest; `test_trap_requests.py` holds 31 trap cases with SQL answer keys.
 
 ## Known-good numbers (demo)
 Primary tumor 1,101 → has RNA 1,097 → has protein 742 → join diagnostic slides = 776 rows / 731 samples (inflated)
