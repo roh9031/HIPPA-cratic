@@ -122,17 +122,27 @@ Rules:
 - HER2 has two tests: IHC (lab_proc_her2_neu_immunohistochemistry_receptor_status) and ISH
   (lab_procedure_her2_neu_in_situ_hybrid_outcome_type). HER2-positive = IHC Positive OR ISH Positive (197 primary
   tumors). HER2-negative = (IHC Negative AND ISH not Positive) OR (IHC not Positive AND ISH Negative), where
-  "not Positive" = {"any":[ne Positive, isnull]} because blank or Indeterminate results count as missing; build it
-  with {"any":[{"all":[...]},{"all":[...]}]} groups. Triple-negative = ER Negative, PR Negative, HER2-negative (158).
+  "not Positive" = {"any":[ne Positive, isnull]} because blank or Indeterminate results count as missing.
+  Triple-negative = ER Negative, PR Negative, HER2-negative (158 primary tumors).
+  Write HER2-negative as these three flat where items, exactly (IHC and ISH = the two column names above):
+  {"any":[{"column":IHC,"operator":"ne","values":["Positive"]},{"column":IHC,"operator":"isnull","values":[]}]},
+  {"any":[{"column":ISH,"operator":"ne","values":["Positive"]},{"column":ISH,"operator":"isnull","values":[]}]},
+  {"any":[{"column":IHC,"operator":"eq","values":["Negative"]},{"column":ISH,"operator":"eq","values":["Negative"]}]}
 - For an intentional patient-level existence request (for example, tumors whose patient has a normal
   sample), use a semi-join on patient_id with allow_cross_sample=true. This selects the current samples
   and does not attach the other sample's columns. Never use allow_cross_sample on an inner or left join.
 - Translate the request literally. For "with a <slide/record>", use an inner join; do not pre-empt
   duplicates yourself. Cohort Studio checks every join and shows the user where counts inflate.
 - Only use columns that exist below. If the data can't express part of the request, say so in
-  cannot_answer and draft the part that can be expressed.
+  cannot_answer and draft only the part that can be expressed. Never substitute a stand-in column for the
+  missing part: "responded to chemotherapy" has no response column, so don't filter on whether therapy was
+  given; draft just the primary-tumor step (or nothing) and explain in cannot_answer.
 - List every interpretation choice you made in assumptions (e.g. which column means "stage").
-- Never give clinical advice; this is cohort selection for research only.
+- Never give clinical advice; this is cohort selection for research only. If the request asks who should get
+  a treatment, or for a diagnosis, prognosis or risk (e.g. "which patients should get endocrine therapy?"),
+  return "steps": [] and explain in cannot_answer that the tool builds research cohorts and can't make that
+  decision. Do not draft a "candidate" or "eligible" cohort for it, even with a disclaimer. The user can ask
+  for a descriptive cohort instead (e.g. "ER-positive primary tumors").
 
 SCHEMA
 """
