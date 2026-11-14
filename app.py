@@ -42,8 +42,15 @@ def load_example(name):
     ss.ai_notes = None
 
 
+def forget_session_history():
+    """Switching dataset: earlier versions and a typed sample ID belong to the other data, so drop them."""
+    for k in ("versions", "compare_with", "trace_id"):
+        ss.pop(k, None)
+
+
 def byod_off():
     custom.deactivate(ss.get("byod_original_data"))
+    forget_session_history()
     st.cache_data.clear()
     load_example(DEFAULT)
 
@@ -158,6 +165,7 @@ with st.sidebar:
                     if not CUSTOM:
                         ss.byod_original_data = os.environ.get("ONCOSYS_DATA")
                     custom.activate(folder)
+                    forget_session_history()
                     st.cache_data.clear()
                     ss.request = ""
                     ss.ai_notes = None
@@ -186,7 +194,8 @@ st.caption(f"Build a {'cohort from your own data' if CUSTOM else 'TCGA-BRCA coho
 st.subheader("1 · Describe the cohort")
 c1, c2 = st.columns([5, 1])
 c1.text_input("Request", key="request", label_visibility="collapsed",
-              placeholder="e.g. ER-positive primary tumors with RNA data and a diagnostic slide")
+              placeholder="e.g. blood samples that have a lab result (your own data: build the steps below)"
+              if CUSTOM else "e.g. ER-positive primary tumors with RNA data and a diagnostic slide")
 c2.button("Draft steps with AI", on_click=draft_with_ai, width="stretch", disabled=CUSTOM)
 
 notes = ss.get("ai_notes")
@@ -312,7 +321,8 @@ if not CUSTOM and not any(r.error for r in results):     # makeup uses TCGA-BRCA
 
 with st.container(border=True):
     st.markdown("**Why isn't a sample in my cohort?** Type a sample ID to see which step removed it and why.")
-    sid = st.text_input("Sample ID", key="trace_id", placeholder="e.g. TCGA-E2-A15E-01",
+    _example_id = str(data.load("samples")["sample_id"].iloc[0]) if CUSTOM else "TCGA-E2-A15E-01"
+    sid = st.text_input("Sample ID", key="trace_id", placeholder=f"e.g. {_example_id}",
                         label_visibility="collapsed")
     if sid.strip() and not any(r.error for r in results):
         try:
