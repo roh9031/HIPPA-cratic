@@ -31,7 +31,7 @@ class StepError(ValueError):
 
 @dataclass
 class Warning_:
-    kind: str              # inflation | cross_sample | missing_values | empty | multi_sample_patients | redacted
+    kind: str              # inflation | cross_sample | missing_values | empty | multi_sample_patients | redacted | unsequenced_mutation
     severity: str          # "problem" (must fix or justify) | "info"
     message: str
     examples: list[dict] = field(default_factory=list)
@@ -78,10 +78,7 @@ def validate_steps(steps) -> list[str]:
             errs.append(f"Step {i}: op must be one of {OPS}, got {op!r}.")
             continue
         for c in s.get("where", []) or []:
-            if c.get("operator") not in OPERATORS:
-                errs.append(f"Step {i}: operator must be one of {OPERATORS}, got {c.get('operator')!r}.")
-            if not c.get("column"):
-                errs.append(f"Step {i}: every condition needs a column.")
+            _validate_condition(c, i, errs)
         if op == "filter" and not s.get("where"):
             errs.append(f"Step {i}: a filter needs at least one condition in 'where'.")
         if op == "join":
@@ -91,6 +88,13 @@ def validate_steps(steps) -> list[str]:
                 errs.append(f"Step {i}: on must be one of {data.KEYS}.")
             if s.get("how", "inner") not in JOIN_HOW:
                 errs.append(f"Step {i}: how must be one of {JOIN_HOW}.")
+            if "allow_cross_sample" in s and not isinstance(s["allow_cross_sample"], bool):
+                errs.append(f"Step {i}: allow_cross_sample must be true or false.")
+            if s.get("allow_cross_sample"):
+                if s.get("on", "sample_id") != "patient_id":
+                    errs.append(f"Step {i}: allow_cross_sample requires on='patient_id'.")
+                if s.get("how", "inner") not in ("semi", "anti"):
+                    errs.append(f"Step {i}: allow_cross_sample requires a semi or anti join.")
         if op == "collapse" and s.get("level", "sample") not in LEVELS:
             errs.append(f"Step {i}: level must be one of {LEVELS}.")
     return errs
@@ -112,6 +116,10 @@ def describe(step: dict) -> str:
 
 
 def _describe_cond(c: dict) -> str:
+    if "any" in c:
+        return "(" + " OR ".join(_describe_cond(nested) for nested in c["any"]) + ")"
+    if "all" in c:
+        return "(" + " AND ".join(_describe_cond(nested) for nested in c["all"]) + ")"
     op, vals = c["operator"], c.get("values") or []
     if op in ("notnull", "isnull"):
         return f"{c['column']} {'is present' if op == 'notnull' else 'is missing'}"
@@ -119,6 +127,23 @@ def _describe_cond(c: dict) -> str:
            "le": "≤", "startswith": "starts with", "contains": "contains"}[op]
     v = vals[0] if len(vals) == 1 and op not in ("in", "not_in") else vals
     return f"{c['column']} {sym} {v}"
+
+
+def _validate_condition(c: dict, step_index: int, errs: list[str]):
+    group = "any" if "any" in c else "all" if "all" in c else None
+    if group:
+        if not isinstance(c[group], list) or not c[group]:
+            errs.append(f"Step {step_index}: {group} must contain at least one condition.")
+        for nested in c.get(group, []):
+            if not isinstance(nested, dict):
+                errs.append(f"Step {step_index}: every any condition must be an object.")
+            else:
+                _validate_condition(nested, step_index, errs)
+        return
+    if c.get("operator") not in OPERATORS:
+        errs.append(f"Step {step_index}: operator must be one of {OPERATORS}, got {c.get('operator')!r}.")
+    if not c.get("column"):
+        errs.append(f"Step {step_index}: every condition needs a column.")
 
 
 def _mask(df: pd.DataFrame, cond: dict, where: str) -> pd.Series:
@@ -129,10 +154,11 @@ def _mask(df: pd.DataFrame, cond: dict, where: str) -> pd.Series:
         raise StepError(f"Column {col!r} doesn't exist in {where}.{hint}")
     s = df[col]
     vals = [str(v) for v in (cond.get("values") or [])]
+    unknown = _unknown_value_mask(s)
     if op == "notnull":
-        return s.notna()
+        return s.notna() & ~unknown
     if op == "isnull":
-        return s.isna()
+        return s.isna() | unknown
     if not vals:
         raise StepError(f"Operator {op!r} on {col!r} needs at least one value.")
     if op in ("gt", "ge", "lt", "le"):
@@ -142,7 +168,7 @@ def _mask(df: pd.DataFrame, cond: dict, where: str) -> pd.Series:
         except ValueError:
             raise StepError(f"{op!r} on {col!r} needs a number, got {vals[0]!r}.")
         return {"gt": num > x, "ge": num >= x, "lt": num < x, "le": num <= x}[op].fillna(False)
-    text = s.astype(str).str.strip().str.lower().where(s.notna(), None)
+    text = s.astype(str).str.strip().str.lower().where(s.notna() & ~unknown, None)
     lv = [v.strip().lower() for v in vals]
     if op in ("in", "eq", "not_in", "ne"):
         m = text.isin(lv)
@@ -151,7 +177,7 @@ def _mask(df: pd.DataFrame, cond: dict, where: str) -> pd.Series:
         if len(nums):
             m = m | pd.to_numeric(text, errors="coerce").isin(list(nums))
         if op in ("not_in", "ne"):
-            m = ~m & s.notna()
+            m = ~m & s.notna() & ~unknown
     elif op == "startswith":
         m = text.fillna("").str.startswith(tuple(lv))
     elif op == "contains":
@@ -159,11 +185,30 @@ def _mask(df: pd.DataFrame, cond: dict, where: str) -> pd.Series:
     return m.astype(bool)
 
 
+def _unknown_value_mask(s: pd.Series) -> pd.Series:
+    text = s.astype(str).str.strip().str.lower()
+    return text.eq("indeterminate") | text.str.startswith("[") & text.str.endswith("]")
+
+
 def _apply_where(df, where_list, where_name):
     m = pd.Series(True, index=df.index)
     for c in where_list or []:
-        m &= _mask(df, c, where_name)
+        m &= _condition_mask(df, c, where_name)
     return m
+
+
+def _condition_mask(df, condition, where_name):
+    if "any" in condition:
+        m = pd.Series(False, index=df.index)
+        for nested in condition["any"]:
+            m |= _condition_mask(df, nested, where_name)
+        return m
+    if "all" in condition:
+        m = pd.Series(True, index=df.index)
+        for nested in condition["all"]:
+            m &= _condition_mask(df, nested, where_name)
+        return m
+    return _mask(df, condition, where_name)
 
 
 def _prepare_right(df: pd.DataFrame, right: pd.DataFrame, table: str, on: str) -> pd.DataFrame:
@@ -188,6 +233,12 @@ def _insert_after(steps, i, step):
     return new
 
 
+def _insert_before(steps, i, step):
+    new = copy.deepcopy(steps)
+    new.insert(i - 1, step)
+    return new
+
+
 # ---------------------------------------------------------------- run
 
 def run(steps: list[dict], ddir: str | None = None):
@@ -205,7 +256,7 @@ def run(steps: list[dict], ddir: str | None = None):
         warns: list[Warning_] = []
         try:
             if step["op"] == "filter":
-                df, warns = _filter(df, step)
+                df, warns = _filter(df, step, i, steps)
             elif step["op"] == "join":
                 df, warns = _join(df, step, i, steps, ddir)
             elif step["op"] == "collapse":
@@ -225,34 +276,156 @@ def run(steps: list[dict], ddir: str | None = None):
     return df, results
 
 
-def _filter(df, step):
-    warns = []
-    for c in step["where"]:
-        if c["column"] in df.columns and c["operator"] not in ("isnull", "notnull"):
-            missing = df[c["column"]].isna()
-            if missing.any():
-                n_s = df.loc[missing, "sample_id"].nunique()
-                warns.append(Warning_(
-                    "missing_values", "info",
-                    f"{n_s} samples were dropped because `{c['column']}` is missing for them, not because "
-                    f"they failed the condition. Decide whether that's acceptable.",
-                    examples=df.loc[missing, ["sample_id", "patient_id"]].drop_duplicates().head(10).to_dict("records"),
-                ))
+def _filter(df, step, i=0, steps=()):
+    warns = _missing_value_warnings(df, step["where"], "the current cohort")
+    warns += _value_not_found_warnings(df, step, i, list(steps), "the current cohort")
     return df[_apply_where(df, step["where"], "the current cohort")], warns
+
+
+def _missing_value_warnings(df, where_list, where_name, cohort=None, on="sample_id"):
+    warns = []
+    conditions = _leaf_conditions(where_list or [])
+    for c in conditions:
+        if c["column"] not in df.columns or c["operator"] in ("isnull", "notnull"):
+            continue
+        missing = df[c["column"]].isna() | _unknown_value_mask(df[c["column"]])
+        if not missing.any():
+            continue
+        affected = df.loc[missing]
+        if cohort is not None:
+            keys = affected[on].dropna().unique()
+            affected = cohort[cohort[on].isin(keys)]
+        n_s = affected["sample_id"].nunique()
+        action = "were dropped" if cohort is None else "may be affected"
+        warns.append(Warning_(
+            "missing_values", "info",
+            f"{n_s} samples {action} because `{c['column']}` is missing or coded as unknown for them, not because "
+            f"they failed the condition. Decide whether that's acceptable.",
+            examples=affected[["sample_id", "patient_id"]].drop_duplicates().head(10).to_dict("records"),
+        ))
+    return warns
+
+
+def _leaf_conditions(conditions):
+    leaves = []
+    for condition in conditions:
+        if "any" in condition:
+            leaves.extend(_leaf_conditions(condition["any"]))
+        elif "all" in condition:
+            leaves.extend(_leaf_conditions(condition["all"]))
+        else:
+            leaves.append(condition)
+    return leaves
+
+
+# Common names people use for genes, mapped to the symbols in mutation_gene_level.tsv.gz.
+GENE_ALIASES = {"her2": "ERBB2", "her-2": "ERBB2", "neu": "ERBB2", "her2/neu": "ERBB2", "p53": "TP53",
+                "pi3k": "PIK3CA", "pik3": "PIK3CA", "e-cadherin": "CDH1", "ecad": "CDH1", "er": "ESR1",
+                "esr": "ESR1", "pr": "PGR", "brca": "BRCA1"}
+
+
+def _value_not_found_warnings(df, step, i, steps, where_name):
+    """`gene = HER2` matches nothing (the symbol is ERBB2): say so and suggest real values (trap round, GAPS #33)."""
+    import difflib
+
+    warns = []
+    raw_where = (steps[i - 1].get("where") or []) if 0 < i <= len(steps) else []
+    for c_i, c in enumerate(step.get("where") or []):
+        if "any" in c or "all" in c or c.get("operator") not in ("eq", "in") or c.get("column") not in df.columns:
+            continue
+        col = df[c["column"]]
+        if pd.api.types.is_numeric_dtype(col) or pd.api.types.is_bool_dtype(col):
+            continue
+        known = col.dropna().astype(str).str.strip()
+        known = known[~_unknown_value_mask(known)].unique()
+        lower = {k.lower(): k for k in known}
+        for v in c.get("values") or []:
+            if str(v).strip().lower() in lower:
+                continue
+            alias = GENE_ALIASES.get(str(v).strip().lower()) if c["column"] == "gene" else None
+            sugg = [alias] if alias and alias.lower() in lower else [
+                lower[m] for m in difflib.get_close_matches(str(v).strip().lower(), list(lower), n=3, cutoff=0.6)]
+            msg = f"No record in {where_name} has `{c['column']}` = {v!r}, so this value matches nothing."
+            if sugg:
+                msg += " Did you mean " + " or ".join(repr(s) for s in sugg) + "?"
+            if alias:
+                msg += f" ({v} is a common name; the gene symbol in this data is {alias}.)"
+            fixes = []
+            if sugg and c_i < len(raw_where) and raw_where[c_i].get("column") == c["column"]:
+                new = copy.deepcopy(steps)
+                vals = new[i - 1]["where"][c_i]["values"]
+                new[i - 1]["where"][c_i]["values"] = [sugg[0] if x == v else x for x in vals]
+                fixes.append({"label": f"Use {sugg[0]!r} instead of {v!r}", "steps": new})
+            warns.append(Warning_("value_not_found", "info", msg, fixes=fixes))
+    return warns
+
+
+def _any_vs_all_warning(df, right, step, i, steps, on):
+    """`gene in [TP53, PIK3CA]` keeps samples with ANY of them. If the user meant ALL, the count is very
+    different (480 vs 57), so show both and offer one step per value (trap round, GAPS #32)."""
+    where = step.get("where") or []
+    for c_i, c in enumerate(where):
+        if "any" in c or "all" in c or c.get("operator") not in ("in", "startswith", "contains"):
+            continue
+        vals = c.get("values") or []
+        if len(vals) < 2 or c.get("column") not in right.columns:
+            continue
+        others = [w for k, w in enumerate(where) if k != c_i]
+        base = right[_apply_where(right, others, "")]
+        keysets = [set(base.loc[_mask(base, dict(c, values=[v]), ""), on].dropna()) for v in vals]
+        n_any = df.loc[df[on].isin(set().union(*keysets)), "sample_id"].nunique()
+        n_all = df.loc[df[on].isin(set.intersection(*keysets)), "sample_id"].nunique()
+        if n_any == n_all:
+            continue
+        names = ", ".join(str(v) for v in vals)
+        split = copy.deepcopy(steps)
+        one = split.pop(i - 1)
+        for v in reversed(vals):
+            s = copy.deepcopy(one)
+            s["how"] = "semi"
+            s["where"][c_i] = dict(s["where"][c_i], operator="eq" if c["operator"] == "in" else c["operator"],
+                                   values=[v])
+            split.insert(i - 1, s)
+        return [Warning_(
+            "any_vs_all", "info",
+            f"`{c['column']}` {c['operator']} [{names}] keeps samples with **any** of these ({n_any:,} samples). "
+            f"Samples with **all** of them: {n_all:,}. If the request says \"and\" / \"both\", use one step per value.",
+            fixes=[{"label": f"Require all of {names} (one step each)", "steps": split}],
+        )]
+    return []
 
 
 def _join(df, step, i, steps, ddir):
     table, on, how = step["table"], step.get("on", "sample_id"), step.get("how", "inner")
+    allow_cross_sample = step.get("allow_cross_sample", False) and how in ("semi", "anti")
     right = data.load(table, ddir)
+    warns = _missing_value_warnings(right, step.get("where"), f"table {table!r}", cohort=df, on=on)
+    warns += _value_not_found_warnings(right, step, i, steps, f"table {table!r}")
+    if how in ("semi", "inner"):
+        warns += _any_vs_all_warning(df, right, step, i, steps, on)
+    if table == "mutation" and how == "anti" and "has_mutation" in df.columns:
+        unsequenced = df[~df["has_mutation"].astype(bool)]
+        if len(unsequenced):
+            warns.append(Warning_(
+                "unsequenced_mutation", "problem",
+                f"{unsequenced['sample_id'].nunique()} samples have no mutation sequencing record. "
+                "An anti-join keeps them because they cannot have a matching mutation row, so they must be "
+                "excluded before asking which sequenced samples lack this mutation.",
+                examples=unsequenced[["sample_id", "patient_id"]].drop_duplicates().head(10).to_dict("records"),
+                fixes=[{"label": "Add has_mutation = True before this step",
+                        "steps": _insert_before(steps, i, {
+                            "op": "filter",
+                            "where": [{"column": "has_mutation", "operator": "eq", "values": ["True"]}],
+                        })}],
+            ))
     right = right[_apply_where(right, step.get("where"), f"table {table!r}")]
-    warns = []
     if how != "anti":
         warns += _redaction_check(df, right, table, on, step, i, steps)
 
     if how in ("semi", "anti"):
         hit = df[on].isin(right[on])
         out = df[hit] if how == "semi" else df[~hit]
-        if on == "patient_id" and how == "semi":
+        if on == "patient_id" and how == "semi" and not allow_cross_sample:
             by_sample = df["sample_id"].isin(right["sample_id"])
             only_via_patient = df[hit & ~by_sample]
             if len(only_via_patient):
@@ -269,7 +442,7 @@ def _join(df, step, i, steps, ddir):
 
     right = _prepare_right(df, right, table, on)
     out = df.merge(right, on=on, how=how)
-    if on == "patient_id":
+    if on == "patient_id" and not allow_cross_sample:
         other = f"sample_id__{table}"
         if other in out.columns:
             bad = out[out[other].notna() & (out[other] != out["sample_id"])]
@@ -298,10 +471,12 @@ def _redaction_check(df, right, table, on, step, i, steps) -> list[Warning_]:
     return [Warning_(
         "redacted", "info",
         f"{hit['sample_id'].nunique()} samples matched {table} records marked as redacted "
-        f"({', '.join(sorted(red['Redaction'].astype(str).unique()))}). Their values are still filled in, so "
-        f"they count as matches. Exclude them unless you know the redaction doesn't matter for your question.",
+        f"({', '.join(sorted(red['Redaction'].astype(str).unique()))}). They are **kept**: their values are filled "
+        f"in and sample_manifest.csv (the official sample list) marks them as having this data, which is the "
+        f"organizers' rule. A person should look at them before relying on their values.",
         examples=hit[["sample_id", "patient_id"]].drop_duplicates().head(10).to_dict("records"),
-        fixes=[{"label": f"Exclude redacted {table} records", "steps": _with_step(steps, i, where=where)}],
+        fixes=[{"label": f"Exclude redacted {table} records (only if your question requires it)",
+                "steps": _with_step(steps, i, where=where)}],
     )]
 
 

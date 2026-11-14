@@ -1,0 +1,37 @@
+{
+  "request": "HER2-positive primary tumors",
+  "steps": [
+    {
+      "op": "filter",
+      "where": [
+        {
+          "column": "sample_type",
+          "operator": "eq",
+          "values": ["Primary Tumor"]
+        }
+      ]
+    },
+    {
+      "op": "join",
+      "table": "clinical",
+      "on": "sample_id",
+      "how": "semi",
+      "where": [
+        {
+          "any": [
+            {
+              "column": "lab_proc_her2_neu_immunohistochemistry_receptor_status",
+              "operator": "eq",
+              "values": ["Positive"]
+            },
+            {
+              "column": "lab_procedure_her2_neu_in_situ_hybrid_outcome_type",
+              "operator": "eq",
+              "values": ["Positive"]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

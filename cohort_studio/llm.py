@@ -31,6 +31,13 @@ _COND = {
     "required": ["column", "operator", "values"],
     "additionalProperties": False,
 }
+_WHERE_ITEM = {
+    "anyOf": [
+        _COND,
+        {"type": "object", "properties": {"any": {"type": "array", "items": _COND}},
+         "required": ["any"], "additionalProperties": False},
+    ]
+}
 
 SCHEMA = {
     "type": "object",
@@ -41,10 +48,11 @@ SCHEMA = {
                 "type": "object",
                 "properties": {
                     "op": {"type": "string", "enum": list(engine.OPS)},
-                    "where": {"anyOf": [{"type": "array", "items": _COND}, {"type": "null"}]},
+                    "where": {"anyOf": [{"type": "array", "items": _WHERE_ITEM}, {"type": "null"}]},
                     "table": {"anyOf": [{"type": "string", "enum": list(data.TABLES)}, {"type": "null"}]},
                     "on": {"anyOf": [{"type": "string", "enum": list(data.KEYS)}, {"type": "null"}]},
                     "how": {"anyOf": [{"type": "string", "enum": list(engine.JOIN_HOW)}, {"type": "null"}]},
+                    "allow_cross_sample": {"anyOf": [{"type": "boolean"}, {"type": "null"}]},
                     "level": {"anyOf": [{"type": "string", "enum": list(engine.LEVELS)}, {"type": "null"}]},
                 },
                 "required": ["op", "where", "table", "on", "how", "level"],
@@ -147,15 +155,29 @@ SYSTEM = """You translate a researcher's cohort request into steps for Cohort St
 Step types (JSON):
 - filter: {"op":"filter","where":[conditions]} keeps rows matching ALL conditions. A filter can only use
   columns already in the cohort: base-table columns, or columns from a table joined in an earlier step.
-- join: {"op":"join","table":T,"on":"sample_id"|"patient_id","how":"inner"|"left"|"semi"|"anti","where":[conditions on T]}
+- join: {"op":"join","table":T,"on":"sample_id"|"patient_id","how":"inner"|"left"|"semi"|"anti",
+  "allow_cross_sample":true|false,"where":[conditions on T]}
 - collapse: {"op":"collapse","level":"sample"|"patient"}
 Condition: {"column":C,"operator":OP,"values":[strings]}. Operators: in, not_in, eq, ne, gt, ge, lt, le,
-notnull, isnull (no values), startswith, contains. Use exact values listed in the schema below.
+notnull, isnull (no values), startswith, contains. Use {"any":[condition, condition]} for OR conditions.
+Use exact category values listed in the schema below.
 Set unused fields to null.
 
 Rules:
 - Use the base table's has_* flags for "has RNA / protein / mutation / copy number / survival data".
+- For "GENE-mutated" requests, semi-join `mutation` on sample_id with gene = GENE and mutated = true.
+  The gene column's example is not an exhaustive list; this matrix reports gene-level presence, not variant details.
+- For "not GENE-mutated" / "GENE wild type" requests, first filter has_mutation = True, then anti-join
+  `mutation` on sample_id with gene = GENE. Without the filter, never-sequenced samples count as wild type
+  (TP53 wild-type primary tumors: 527 correct, 837 without it). State this in assumptions.
+- "in" with several values means ANY of them. For "both X and Y" / "all of" on mutation genes or slide kinds,
+  use one semi-join per value (TP53 and PIK3CA: 57 samples; one step with gene in [TP53, PIK3CA]: 480).
+- Use official gene symbols: HER2 -> ERBB2, p53 -> TP53, PI3K -> PIK3CA, E-cadherin -> CDH1. HER2-positive
+  receptor status is a clinical column, not an ERBB2 mutation; say which one you used.
 - To filter on a clinical field, first join `clinical` on sample_id, then filter.
+- For an intentional patient-level existence request (for example, tumors whose patient has a normal
+  sample), use a semi-join on patient_id with allow_cross_sample=true. This selects the current samples
+  and does not attach the other sample's columns. Never use allow_cross_sample on an inner or left join.
 - Translate the request literally. For "with a <slide/record>", use an inner join; do not pre-empt
   duplicates yourself. Cohort Studio checks every join and shows the user where counts inflate.
 - Only use columns that exist below. If the data can't express part of the request, say so in

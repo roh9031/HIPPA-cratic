@@ -22,6 +22,7 @@ import pytest
 
 pytest.importorskip("duckdb")
 
+from cohort_studio import data
 from cohort_studio.engine import run, unresolved_problems
 from cohort_studio.export import cohort_samples
 from cohort_studio.sqlcheck import connect
@@ -136,7 +137,18 @@ CASES = [
         steps=[PRIMARY, {"op": "join", "table": "survival", "on": "sample_id", "how": "semi",
                          "where": [{"column": "OS.time", "operator": "notnull"},
                                    {"column": "Redaction", "operator": "isnull"}]}],
-        notes="GAPS.md #6.",
+        notes="Only when the user explicitly asks to exclude them. By default they stay in (next case). GAPS.md #6.",
+    ),
+    Case(
+        "survival_keeps_redacted",
+        "Primary tumors with overall survival data",
+        # Organizer rule (Discord, Nov 12): the sample manifest marks the 5 redacted primary tumors as having survival
+        # data, so they stay in the cohort. The tool flags them (info note) for a person to look at.
+        """SELECT sample_id FROM samples
+           WHERE sample_type = 'Primary Tumor'
+             AND sample_id IN (SELECT sample_id FROM survival WHERE "OS.time" IS NOT NULL)""",
+        steps=[PRIMARY, _semi("survival", [{"column": "OS.time", "operator": "notnull"}])],
+        notes="Includes the 5 redacted primary tumors. GAPS.md #6.",
     ),
     Case(
         "no_diagnostic_slide",
@@ -175,17 +187,21 @@ CASES = [
     Case(
         "tumor_with_normal_slide",
         "Primary tumors whose patient has a matched normal sample with a slide",
-        # Decision: the slide manifest is the authority on slides, so a slide with a normal barcode (-11) counts
-        # even when that normal sample is missing from sample_manifest (24 such samples). = 162.
-        # Counting only normals listed in the manifest gives 138. See gap #19.
+        # Organizer rule (Discord, Nov 12): sample_manifest.csv is the official list of samples; the slide manifest
+        # only describes slides. So the normal sample must be in the manifest AND have a slide = 138. The 24 normal
+        # samples that only appear in slide_manifest.csv are left out (counting them gave 162). See gap #19.
         """SELECT sample_id FROM samples
            WHERE sample_type = 'Primary Tumor'
-             AND patient_id IN (SELECT patient_id FROM slides WHERE substr(sample_id, 14, 2) = '11')""",
-        # Right sample set, but a patient_id match is always flagged as a cross-sample problem (gap #2).
-        steps=[PRIMARY, {"op": "join", "table": "slides", "on": "patient_id", "how": "semi",
-                         "where": [{"column": "sample_id", "operator": "contains", "values": ["-11"]}]}],
-        expected_n=162,
-        gap="#2",
+             AND patient_id IN (SELECT n.patient_id FROM samples n
+                                WHERE n.sample_type = 'Solid Tissue Normal'
+                                  AND n.sample_id IN (SELECT sample_id FROM slides))""",
+        # The steps use the manifest's slides_for_sample; the key checks slide_manifest.csv instead (both 138),
+        # so the answer key stays independent of the column the engine relies on.
+        steps=[PRIMARY, {"op": "join", "table": "samples", "on": "patient_id", "how": "semi",
+                         "allow_cross_sample": True,
+                         "where": [{"column": "sample_type", "operator": "eq", "values": ["Solid Tissue Normal"]},
+                                   {"column": "slides_for_sample", "operator": "gt", "values": ["0"]}]}],
+        expected_n=138,
     ),
     Case(
         "tumor_with_matched_normal",
@@ -193,12 +209,10 @@ CASES = [
         """SELECT sample_id FROM samples
            WHERE sample_type = 'Primary Tumor'
              AND patient_id IN (SELECT patient_id FROM samples WHERE sample_type = 'Solid Tissue Normal')""",
-        # Best the engine can do today: keep tumors whose *patient* has a normal clinical record. The sample set is
-        # right, but matching on patient_id is always flagged as a cross-sample problem, so export is blocked.
         steps=[PRIMARY, {"op": "join", "table": "clinical", "on": "patient_id", "how": "semi",
+                         "allow_cross_sample": True,
                          "where": [{"column": "sample_type", "operator": "eq", "values": ["Solid Tissue Normal"]}]}],
         expected_n=139,
-        gap="#2",
     ),
     Case(
         "her2_positive",
@@ -211,12 +225,14 @@ CASES = [
              AND sample_id IN (SELECT sample_id FROM clinical
                                WHERE lab_proc_her2_neu_immunohistochemistry_receptor_status = 'Positive'
                                   OR lab_procedure_her2_neu_in_situ_hybrid_outcome_type = 'Positive')""",
-        # Closest the engine can get: conditions are AND-only, so it can't say "IHC positive OR ISH positive".
         steps=[PRIMARY, {"op": "join", "table": "clinical", "on": "sample_id", "how": "semi",
-                         "where": [{"column": "lab_proc_her2_neu_immunohistochemistry_receptor_status",
-                                    "operator": "eq", "values": ["Positive"]}]}],
+                         "where": [{"any": [
+                             {"column": "lab_proc_her2_neu_immunohistochemistry_receptor_status",
+                              "operator": "eq", "values": ["Positive"]},
+                             {"column": "lab_procedure_her2_neu_in_situ_hybrid_outcome_type",
+                              "operator": "eq", "values": ["Positive"]},
+                         ]}]}],
         expected_n=197,
-        gap="#16",
     ),
     Case(
         "triple_negative",
@@ -235,15 +251,33 @@ CASES = [
                        AND coalesce(lab_procedure_her2_neu_in_situ_hybrid_outcome_type, '') <> 'Positive')
                    OR (coalesce(lab_proc_her2_neu_immunohistochemistry_receptor_status, '') <> 'Positive'
                        AND lab_procedure_her2_neu_in_situ_hybrid_outcome_type = 'Negative')))""",
-        # Most natural engine attempt: all three = Negative. Gives 116 (misses 44, wrongly includes 2) and no
-        # warning at all, because conditions inside a join skip the missing-value check (gap #18).
         steps=[PRIMARY, {"op": "join", "table": "clinical", "on": "sample_id", "how": "semi", "where": [
             {"column": "breast_carcinoma_estrogen_receptor_status", "operator": "eq", "values": ["Negative"]},
             {"column": "breast_carcinoma_progesterone_receptor_status", "operator": "eq", "values": ["Negative"]},
-            {"column": "lab_proc_her2_neu_immunohistochemistry_receptor_status", "operator": "eq", "values": ["Negative"]},
+            {"any": [
+                {"all": [
+                    {"column": "lab_proc_her2_neu_immunohistochemistry_receptor_status", "operator": "eq",
+                     "values": ["Negative"]},
+                    {"any": [
+                        {"column": "lab_procedure_her2_neu_in_situ_hybrid_outcome_type", "operator": "ne",
+                         "values": ["Positive"]},
+                        {"column": "lab_procedure_her2_neu_in_situ_hybrid_outcome_type", "operator": "isnull",
+                         "values": []},
+                    ]},
+                ]},
+                {"all": [
+                    {"any": [
+                        {"column": "lab_proc_her2_neu_immunohistochemistry_receptor_status", "operator": "ne",
+                         "values": ["Positive"]},
+                        {"column": "lab_proc_her2_neu_immunohistochemistry_receptor_status", "operator": "isnull",
+                         "values": []},
+                    ]},
+                    {"column": "lab_procedure_her2_neu_in_situ_hybrid_outcome_type", "operator": "eq",
+                     "values": ["Negative"]},
+                ]},
+            ]},
         ]}],
         expected_n=158,
-        gap="#16",
     ),
     # The data README quotes this number, so it's the most likely request a judge starts from.
     Case(
@@ -255,6 +289,57 @@ CASES = [
         steps=[PRIMARY, FIVE_LAYERS],
         expected_n=535,
         notes="Matches the 535 in the challenge's data/tcga-brca/README.md. 535 patients too (no duplicates).",
+    ),
+    Case(
+        "tp53_mutated_primary",
+        "Primary tumors with a TP53 mutation",
+        """SELECT sample_id FROM samples
+           WHERE sample_type = 'Primary Tumor'
+             AND sample_id IN (
+               SELECT sample_id FROM mutation WHERE gene = 'TP53' AND mutated
+             )""",
+        steps=[PRIMARY, _semi("mutation", [
+            {"column": "gene", "operator": "eq", "values": ["TP53"]},
+            {"column": "mutated", "operator": "eq", "values": ["true"]},
+        ])],
+        notes="Uses the binary gene-level matrix; this identifies mutation presence, not a specific variant.",
+    ),
+    Case(
+        "tp53_and_pik3ca_primary",
+        "Primary tumors with both a TP53 and a PIK3CA mutation",
+        """SELECT sample_id FROM samples WHERE sample_type = 'Primary Tumor'
+             AND sample_id IN (SELECT sample_id FROM mutation WHERE gene = 'TP53')
+             AND sample_id IN (SELECT sample_id FROM mutation WHERE gene = 'PIK3CA')""",
+        steps=[PRIMARY, _semi("mutation", [{"column": "gene", "operator": "eq", "values": ["TP53"]}]),
+               _semi("mutation", [{"column": "gene", "operator": "eq", "values": ["PIK3CA"]}])],
+        expected_n=57,
+        # Trap (GAPS #32): one step with gene in [TP53, PIK3CA] means OR and gives 480. The engine warns.
+        notes="'Both' needs one semi-join per gene. gene IN (TP53, PIK3CA) = 480 (either one).",
+    ),
+    Case(
+        "diagnostic_and_frozen_slide",
+        "Primary tumors with both a diagnostic slide and a frozen slide",
+        """SELECT sample_id FROM samples WHERE sample_type = 'Primary Tumor'
+             AND sample_id IN (SELECT sample_id FROM slides WHERE slide_kind LIKE 'diagnostic%')
+             AND sample_id IN (SELECT sample_id FROM slides WHERE slide_kind LIKE 'frozen%')""",
+        steps=[PRIMARY, _semi("slides", [{"column": "slide_kind", "operator": "startswith", "values": ["diagnostic"]}]),
+               _semi("slides", [{"column": "slide_kind", "operator": "startswith", "values": ["frozen"]}])],
+        expected_n=1056,
+        notes="startswith [diagnostic, frozen] in one step means either kind: 1,098.",
+    ),
+    Case(
+        "tp53_wild_type_primary",
+        "Primary tumors without a TP53 mutation",
+        """SELECT sample_id FROM samples
+           WHERE sample_type = 'Primary Tumor' AND has_mutation
+             AND sample_id NOT IN (SELECT sample_id FROM mutation WHERE gene = 'TP53')""",
+        steps=[PRIMARY, {"op": "filter", "where": [{"column": "has_mutation", "operator": "eq", "values": ["True"]}]},
+               {"op": "join", "table": "mutation", "on": "sample_id", "how": "anti",
+                "where": [{"column": "gene", "operator": "eq", "values": ["TP53"]}]}],
+        expected_n=527,
+        # Trap (GAPS.md #31): the anti-join alone gives 837, because 310 primary tumors were never sequenced
+        # and so have no TP53 row either. "No mutation found" needs has_mutation first.
+        notes="Wild type = sequenced and no TP53 row. Without the has_mutation filter: 837.",
     ),
     Case(
         "all_five_layers_diagnostic_slide",
@@ -363,6 +448,19 @@ CASES = [
               "first (gap #9).",
     ),
 ]
+
+
+def test_mutation_table_is_sparse_and_manifest_bound():
+    mutations = data.load("mutation")
+    samples = data.load("samples")
+    manifest_samples = set(samples["sample_id"])
+
+    assert set(mutations.columns) == {"sample_id", "patient_id", "gene", "mutated"}
+    assert mutations["sample_id"].isin(manifest_samples).all()
+    assert mutations["sample_id"].str.len().eq(15).all()
+    assert mutations["patient_id"].eq(mutations["sample_id"].str[:12]).all()
+    assert mutations["mutated"].all()
+    assert not mutations.duplicated(["sample_id", "gene"]).any()
 
 
 def _param(c):
