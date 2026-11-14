@@ -30,7 +30,7 @@ problems with one-click fixes, and exports `cohort_samples.csv` (one row per 15-
 - `cohort_studio/llm.py`: optional AI drafting (E). Claude (`claude-opus-5-5`, key in the sidebar or
   ANTHROPIC_API_KEY) by default; NVIDIA (`llm_nvidia.py`, NVIDIA_API_KEY) if no Claude key (the team uses NVIDIA;
   Groq was dropped: its free-tier rate limits failed). Sees only schema, never rows. Eval: `scripts/run_ai_eval.py`,
-  `docs/AI_EVAL.md`, results in `docs/ai_eval_results.md` (1 of 10 run so far).
+  `docs/AI_EVAL.md` (14 requests; prompt v3 scored 14/14 on NVIDIA Nemotron Ultra, Nov 14).
 - `cohort_studio/advice.py`: which fix the UI stars (GAPS #21), with a reason and caveats on the others.
 - `cohort_studio/versions.py`: session-only cohort versions and the diff between two of them (GAPS #26).
 - `cohort_studio/export.py`: cohort_samples.csv, cohort.json, rebuild_cohort.py.
@@ -56,7 +56,6 @@ All five data layers = 535; plus a diagnostic slide = 531 (572 rows if inner-joi
 - Code freeze: Sat Nov 14, 2:15 PM ET. A finished workflow beats an ambitious broken one.
 
 ## Open TODOs
-- Test AI drafting on 5–10 requests; more trap examples and tests
 - OR groups (`{"any"/"all": [...]}`) and patient-level matching (`allow_cross_sample`) work in the engine,
   the builder (and/or switch per condition; nested groups read-only) and the SQL check; all 31 trap cases pass. Next gaps in docs/GAPS.md
 - More joinable tables (mutation/protein values); add the demo video link to the README
