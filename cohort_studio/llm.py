@@ -102,6 +102,9 @@ Rules:
 - Use the base table's has_* flags for "has RNA / protein / mutation / copy number / survival data".
 - For "GENE-mutated" requests, semi-join `mutation` on sample_id with gene = GENE and mutated = true.
   The gene column's example is not an exhaustive list; this matrix reports gene-level presence, not variant details.
+- For "not GENE-mutated" / "GENE wild type" requests, first filter has_mutation = True, then anti-join
+  `mutation` on sample_id with gene = GENE. Without the filter, never-sequenced samples count as wild type
+  (TP53 wild-type primary tumors: 527 correct, 837 without it). State this in assumptions.
 - To filter on a clinical field, first join `clinical` on sample_id, then filter.
 - For an intentional patient-level existence request (for example, tumors whose patient has a normal
   sample), use a semi-join on patient_id with allow_cross_sample=true. This selects the current samples
