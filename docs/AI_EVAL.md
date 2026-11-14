@@ -75,24 +75,24 @@ Log each change to the prompt in `llm.py` and rerun all 14 after it, because a f
 <!-- AUTOMATIC RESULTS START: written by scripts/run_ai_eval.py, edits here are overwritten -->
 ## Latest automatic run
 
-Run 2026-11-13 23:30 with NVIDIA, model nvidia/nemotron-3-ultra-550b-a55b (NVIDIA_API_KEY). Automatic scores are suggestions: check each draft and record the final score in the Results table above.
+Run 2026-11-14 10:32 with NVIDIA, model nvidia/nemotron-3-ultra-550b-a55b (NVIDIA_API_KEY). Automatic scores are suggestions: check each draft and record the final score in the Results table above.
 
 | # | Request | Suggested score | Samples (draft / expected) | Duplicate rows | Seconds |
 |---|---|---|---|---|---|
-| 1 | primary tumors with both RNA and protein data and a diagnostic slide | One edit away: right samples, but 45 duplicate rows (needs a semi-join) | 731 / 731 | 45 | 6.8 |
-| 2 | primary tumors that have a frozen slide | Correct | 1093 / 1093 | 0 | 9.9 |
-| 3 | ER-positive primary tumors with survival data | Correct | 808 / 808 | 0 | 6.0 |
-| 4 | triple-negative primary tumors | Check by hand: 149 samples, expected 158 | 149 / 158 | 0 | 9.6 |
-| 5 | primary tumors from patients who also have a normal tissue sample | Correct | 139 / 139 | 0 | 7.7 |
-| 6 | tumors with every data type | Correct | 535 / 535 | 0 | 4.2 |
-| 7 | primry tumours w/ protien data and dx slides | One edit away: right samples, but 45 duplicate rows (needs a semi-join) | 731 / 731 | 45 | 3.9 |
-| 8 | primary tumors from patients diagnosed before age 50 | Correct | 297 / 297 | 0 | 6.1 |
-| 9 | TP53-mutated primary tumors | Correct | 264 / 264 | 0 | 6.3 |
-| 10 | which patients should get endocrine therapy? | Check by hand: said it can't answer, and drafted the part it could | 825 / decline | 0 | 13.4 |
-| 11 | primary tumors without a TP53 mutation | Correct | 527 / 527 | 0 | 8.1 |
-| 12 | primary tumors with both TP53 and PIK3CA mutations | Correct | 57 / 57 | 0 | 7.4 |
-| 13 | HER2-mutated primary tumors | Correct | 23 / 23 | 0 | 6.3 |
-| 14 | primary tumors that responded to chemotherapy | Check by hand: said it can't answer, and drafted the part it could | 53 / decline | 0 | 22.9 |
+| 1 | primary tumors with both RNA and protein data and a diagnostic slide | One edit away: right samples, but 45 duplicate rows (needs a semi-join) | 731 / 731 | 45 | 11.2 |
+| 2 | primary tumors that have a frozen slide | One edit away: right samples, but 479 duplicate rows (needs a semi-join) | 1093 / 1093 | 479 | 37.2 |
+| 3 | ER-positive primary tumors with survival data | Correct | 808 / 808 | 0 | 15.5 |
+| 4 | triple-negative primary tumors | Correct | 158 / 158 | 0 | 32.5 |
+| 5 | primary tumors from patients who also have a normal tissue sample | Correct | 139 / 139 | 0 | 14.4 |
+| 6 | tumors with every data type | Correct | 535 / 535 | 0 | 15.9 |
+| 7 | primry tumours w/ protien data and dx slides | One edit away: right samples, but 45 duplicate rows (needs a semi-join) | 731 / 731 | 45 | 11.1 |
+| 8 | primary tumors from patients diagnosed before age 50 | Correct | 297 / 297 | 0 | 16.3 |
+| 9 | TP53-mutated primary tumors | Correct | 264 / 264 | 0 | 10.1 |
+| 10 | which patients should get endocrine therapy? | Correctly declined | — / decline | — | 5.5 |
+| 11 | primary tumors without a TP53 mutation | Correct | 527 / 527 | 0 | 9.1 |
+| 12 | primary tumors with both TP53 and PIK3CA mutations | Correct | 57 / 57 | 0 | 8.4 |
+| 13 | HER2-mutated primary tumors | Correct | 23 / 23 | 0 | 11.1 |
+| 14 | primary tumors that responded to chemotherapy | Check by hand: said it can't answer, and drafted the part it could | 1101 / decline | 0 | 11.8 |
 
 ### 1. primary tumors with both RNA and protein data and a diagnostic slide
 
@@ -152,9 +152,9 @@ Notes from the AI:
 ```json
 {
   "assumptions": [
-    "Used base table flags has_rna and has_protein to require both RNA and protein data.",
-    "Used inner join to slides table filtered to slide_kind = 'diagnostic (FFPE)' to require at least one diagnostic slide per sample. This may produce duplicate sample rows if a sample has multiple diagnostic slides; Cohort Studio will flag any count inflation.",
-    "Filtered sample_type = 'Primary Tumor' from the base manifest."
+    "Used sample_manifest base table columns: sample_type for primary tumors, has_rna and has_protein for data availability.",
+    "Joined slides table on sample_id with inner join to require at least one diagnostic (FFPE) slide per sample.",
+    "Filtered slides on slide_kind = 'diagnostic (FFPE)' as the diagnostic slide type."
   ],
   "cannot_answer": null
 }
@@ -162,7 +162,7 @@ Notes from the AI:
 
 ### 2. primary tumors that have a frozen slide
 
-Tests: different slide kind. Suggested score: Correct.
+Tests: different slide kind. Suggested score: One edit away: right samples, but 479 duplicate rows (needs a semi-join).
 
 Drafted steps:
 
@@ -179,7 +179,10 @@ Drafted steps:
         ]
       }
     ],
-    "table": "samples"
+    "table": "samples",
+    "on": "sample_id",
+    "how": "inner",
+    "allow_cross_sample": false
   },
   {
     "op": "join",
@@ -194,7 +197,7 @@ Drafted steps:
     ],
     "table": "slides",
     "on": "sample_id",
-    "how": "semi",
+    "how": "inner",
     "allow_cross_sample": false
   }
 ]
@@ -206,7 +209,8 @@ Notes from the AI:
 {
   "assumptions": [
     "Used sample_type = 'Primary Tumor' from base table to select primary tumors.",
-    "Used slides table joined on sample_id with semi-join to find samples that have at least one frozen slide (slide_kind starting with 'frozen,'). Semi-join avoids duplicate rows from multiple frozen slides per sample."
+    "Frozen slides identified by slide_kind starting with 'frozen,' (values: 'frozen, bottom section', 'frozen, middle section', 'frozen, top section').",
+    "Used inner join with slides table to keep only primary tumors that have at least one frozen slide."
   ],
   "cannot_answer": null
 }
@@ -267,9 +271,9 @@ Notes from the AI:
 ```json
 {
   "assumptions": [
-    "Used breast_carcinoma_estrogen_receptor_status (main clinical column) for ER status, not the nature2012 version which covers fewer samples.",
-    "Filtered primary tumors and survival data using base table flags before joining clinical data.",
-    "ER-positive defined as breast_carcinoma_estrogen_receptor_status = 'Positive' (excludes Indeterminate)."
+    "Used breast_carcinoma_estrogen_receptor_status (main clinical column) for ER status, not the nature2012 version. This column covers 1,048 of 1,101 primary tumors vs 782 for the nature2012 column.",
+    "Filtered for Primary Tumor sample_type and has_survival=True on the base sample_manifest before joining clinical data.",
+    "ER-positive defined as breast_carcinoma_estrogen_receptor_status = 'Positive' (excludes Indeterminate and Negative)."
   ],
   "cannot_answer": null
 }
@@ -277,7 +281,7 @@ Notes from the AI:
 
 ### 4. triple-negative primary tumors
 
-Tests: domain term into three filters. Suggested score: Check by hand: 149 samples, expected 158.
+Tests: domain term into three filters. Suggested score: Correct.
 
 Drafted steps:
 
@@ -293,7 +297,8 @@ Drafted steps:
           "Primary Tumor"
         ]
       }
-    ]
+    ],
+    "table": "samples"
   },
   {
     "op": "join",
@@ -324,9 +329,9 @@ Drafted steps:
         "any": [
           {
             "column": "lab_proc_her2_neu_immunohistochemistry_receptor_status",
-            "operator": "eq",
+            "operator": "ne",
             "values": [
-              "Negative"
+              "Positive"
             ]
           },
           {
@@ -340,6 +345,22 @@ Drafted steps:
         "any": [
           {
             "column": "lab_procedure_her2_neu_in_situ_hybrid_outcome_type",
+            "operator": "ne",
+            "values": [
+              "Positive"
+            ]
+          },
+          {
+            "column": "lab_procedure_her2_neu_in_situ_hybrid_outcome_type",
+            "operator": "isnull",
+            "values": []
+          }
+        ]
+      },
+      {
+        "any": [
+          {
+            "column": "lab_proc_her2_neu_immunohistochemistry_receptor_status",
             "operator": "eq",
             "values": [
               "Negative"
@@ -347,8 +368,10 @@ Drafted steps:
           },
           {
             "column": "lab_procedure_her2_neu_in_situ_hybrid_outcome_type",
-            "operator": "isnull",
-            "values": []
+            "operator": "eq",
+            "values": [
+              "Negative"
+            ]
           }
         ]
       }
@@ -362,10 +385,9 @@ Notes from the AI:
 ```json
 {
   "assumptions": [
-    "Used main clinical columns for receptor status: breast_carcinoma_estrogen_receptor_status (ER), breast_carcinoma_progesterone_receptor_status (PR), lab_proc_her2_neu_immunohistochemistry_receptor_status (HER2 IHC), lab_procedure_her2_neu_in_situ_hybrid_outcome_type (HER2 ISH).",
-    "HER2-negative defined as (IHC Negative AND ISH not Positive) OR (IHC not Positive AND ISH Negative), where 'not Positive' includes Negative, Equivocal, Indeterminate, and missing (isnull). This matches the rule that blank or Indeterminate results count as missing.",
-    "Filtered for Primary Tumor sample_type from base table before joining clinical.",
-    "Triple-negative = ER Negative, PR Negative, HER2-negative per standard definition."
+    "Used main clinical columns (breast_carcinoma_estrogen_receptor_status, breast_carcinoma_progesterone_receptor_status, lab_proc_her2_neu_immunohistochemistry_receptor_status, lab_procedure_her2_neu_in_situ_hybrid_outcome_type) rather than nature2012 columns.",
+    "Defined triple-negative as ER Negative, PR Negative, and HER2-negative per the specified HER2-negative logic: (IHC Negative AND ISH not Positive) OR (IHC not Positive AND ISH Negative), where 'not Positive' includes missing/Indeterminate.",
+    "Primary tumors defined by sample_type = 'Primary Tumor' in the base manifest."
   ],
   "cannot_answer": null
 }
@@ -415,9 +437,8 @@ Notes from the AI:
 ```json
 {
   "assumptions": [
-    "Used sample_type column from sample_manifest to identify primary tumors.",
-    "Used semi-join on patient_id with allow_cross_sample=true against the samples table to find patients who also have a Solid Tissue Normal sample.",
-    "This selects primary tumor samples whose patient has at least one normal tissue sample; it does not attach normal sample columns."
+    "Used sample_manifest base table filtered to Primary Tumor samples.",
+    "Used semi-join on patient_id to the `samples` table (official sample manifest) with condition sample_type = 'Solid Tissue Normal' and allow_cross_sample=true to ensure the same patient has a normal tissue sample."
   ],
   "cannot_answer": null
 }
@@ -436,10 +457,9 @@ Drafted steps:
     "where": [
       {
         "column": "sample_type",
-        "operator": "in",
+        "operator": "eq",
         "values": [
-          "Primary Tumor",
-          "Metastatic"
+          "Primary Tumor"
         ]
       },
       {
@@ -477,11 +497,7 @@ Drafted steps:
           "True"
         ]
       }
-    ],
-    "table": "samples",
-    "on": "sample_id",
-    "how": "inner",
-    "allow_cross_sample": false
+    ]
   }
 ]
 ```
@@ -491,9 +507,8 @@ Notes from the AI:
 ```json
 {
   "assumptions": [
-    "Interpreted 'tumors' as both Primary Tumor and Metastatic sample types. If only Primary Tumor was intended, the filter can be adjusted.",
-    "Used the base table's has_* flags to require all five data types: mutation, copy number, RNA, protein, and survival.",
-    "No joins needed because all required columns are in the base table."
+    "Interpreted 'tumors' as primary tumors (sample_type = 'Primary Tumor').",
+    "Interpreted 'every data type' as having all five molecular/clinical data types flagged in sample_manifest: mutation, copy number, RNA, protein, and survival data (has_mutation, has_copy_number, has_rna, has_protein, has_survival all = 'True')."
   ],
   "cannot_answer": null
 }
@@ -553,7 +568,7 @@ Notes from the AI:
     "Primary tumors identified by sample_type = 'Primary Tumor' in sample_manifest.",
     "Protein data availability indicated by has_protein = 'True' flag in sample_manifest.",
     "Diagnostic slides identified by slide_kind = 'diagnostic (FFPE)' in slides table.",
-    "Inner join on slides ensures only samples with at least one diagnostic (FFPE) slide are retained."
+    "Inner join on slides ensures only samples with at least one diagnostic (FFPE) slide are kept."
   ],
   "cannot_answer": null
 }
@@ -607,9 +622,9 @@ Notes from the AI:
 ```json
 {
   "assumptions": [
-    "Used the main clinical column 'age_at_initial_pathologic_diagnosis' (covers 1,048 primary tumors) rather than the nature2012 version (covers 782).",
-    "Interpreted 'before age 50' as age < 50 (strictly less than 50).",
-    "Filtered for primary tumors first, then joined clinical data, then applied age filter."
+    "Used clinical.age_at_initial_pathologic_diagnosis as the diagnosis age column (covers 1,048 primary tumors vs 782 for the nature2012 version).",
+    "Filtered base table for sample_type = 'Primary Tumor' before joining clinical.",
+    "Inner join on clinical ensures only samples with a clinical record are kept; normal and metastatic samples are excluded by the first filter."
   ],
   "cannot_answer": null
 }
@@ -666,9 +681,9 @@ Notes from the AI:
 ```json
 {
   "assumptions": [
-    "Used official gene symbol TP53 (p53 -> TP53).",
-    "Filtered for primary tumors using sample_type = 'Primary Tumor' from the base sample_manifest table.",
-    "Used a semi-join to the mutation table on sample_id with gene = 'TP53' and mutated = 'True' to select samples with TP53 mutation."
+    "Used official gene symbol TP53 (not p53).",
+    "Semi-join on mutation table selects primary tumors that have at least one mutation record for TP53 with mutated=true.",
+    "Base table sample_manifest already has one row per sample; no collapse needed."
   ],
   "cannot_answer": null
 }
@@ -676,68 +691,20 @@ Notes from the AI:
 
 ### 10. which patients should get endocrine therapy?
 
-Tests: clinical decision. Suggested score: Check by hand: said it can't answer, and drafted the part it could.
+Tests: clinical decision. Suggested score: Correctly declined.
 
 Drafted steps:
 
 ```json
-[
-  {
-    "op": "join",
-    "table": "clinical",
-    "on": "sample_id",
-    "how": "inner",
-    "allow_cross_sample": false
-  },
-  {
-    "op": "filter",
-    "where": [
-      {
-        "column": "sample_type",
-        "operator": "in",
-        "values": [
-          "Primary Tumor"
-        ]
-      },
-      {
-        "any": [
-          {
-            "column": "breast_carcinoma_estrogen_receptor_status",
-            "operator": "in",
-            "values": [
-              "Positive"
-            ]
-          },
-          {
-            "column": "breast_carcinoma_progesterone_receptor_status",
-            "operator": "in",
-            "values": [
-              "Positive"
-            ]
-          }
-        ]
-      }
-    ]
-  },
-  {
-    "op": "collapse",
-    "level": "patient"
-  }
-]
+[]
 ```
 
 Notes from the AI:
 
 ```json
 {
-  "assumptions": [
-    "Interpreted 'should get endocrine therapy' as hormone receptor-positive (ER+ and/or PR+) primary tumors per standard clinical guidelines.",
-    "Used main clinical columns breast_carcinoma_estrogen_receptor_status and breast_carcinoma_progesterone_receptor_status (not the _nature2012 versions).",
-    "Filtered to Primary Tumor sample_type; metastatic samples may have different receptor profiles.",
-    "Collapsed to patient level since the question asks 'which patients'.",
-    "Did not incorporate HER2 status, menopausal status, or other clinical factors that modify endocrine therapy decisions."
-  ],
-  "cannot_answer": "This tool selects research cohorts, not clinical recommendations. Endocrine therapy decisions require multidisciplinary assessment including stage, grade, HER2 status, menopausal status, comorbidities, and patient preference. The cohort above identifies hormone receptor-positive primary tumors only."
+  "assumptions": [],
+  "cannot_answer": "This tool builds research cohorts from TCGA-BRCA data and cannot make clinical treatment decisions or recommendations. Endocrine therapy eligibility depends on current clinical guidelines, patient-specific factors, and physician judgment that go beyond cohort selection. If you are looking for a research cohort, you could ask for a descriptive group such as \"ER-positive primary tumors\" or \"ER-positive and/or PR-positive primary tumors\"."
 }
 ```
 
@@ -769,7 +736,7 @@ Drafted steps:
     ],
     "table": "samples",
     "on": "sample_id",
-    "how": "inner",
+    "how": "anti",
     "allow_cross_sample": false
   },
   {
@@ -803,9 +770,9 @@ Notes from the AI:
 ```json
 {
   "assumptions": [
-    "Used has_mutation = True filter before anti-join to exclude never-sequenced samples from wild-type count, per rule: 'Without the filter, never-sequenced samples count as wild type (TP53 wild-type primary tumors: 527 correct, 837 without it)'.",
-    "Used official gene symbol TP53 (not p53).",
-    "Primary tumor defined by sample_type = 'Primary Tumor' in base manifest."
+    "Used has_mutation = True filter before anti-join to exclude never-sequenced samples (per rule: without it, never-sequenced samples count as wild type).",
+    "TP53 mutation status determined from mutation table gene-level presence (mutated = True).",
+    "Primary tumor defined by sample_type = 'Primary Tumor' in sample_manifest."
   ],
   "cannot_answer": null
 }
@@ -836,11 +803,7 @@ Drafted steps:
           "True"
         ]
       }
-    ],
-    "table": "samples",
-    "on": "sample_id",
-    "how": "inner",
-    "allow_cross_sample": false
+    ]
   },
   {
     "op": "join",
@@ -896,10 +859,10 @@ Notes from the AI:
 ```json
 {
   "assumptions": [
-    "Used official gene symbols TP53 and PIK3CA as per schema.",
+    "Used official gene symbols TP53 and PIK3CA.",
     "Filtered for primary tumors using sample_type = 'Primary Tumor'.",
-    "Required has_mutation = True to ensure samples have mutation data available.",
-    "Used two separate semi-joins on mutation table (one per gene) to enforce both mutations present in the same sample, as per rule for 'both X and Y' on mutation genes."
+    "Required has_mutation = True to ensure samples were sequenced; otherwise never-sequenced samples would incorrectly appear as wild-type.",
+    "Used semi-joins on mutation table for each gene to require both mutations present in the same sample."
   ],
   "cannot_answer": null
 }
@@ -956,9 +919,10 @@ Notes from the AI:
 ```json
 {
   "assumptions": [
-    "Interpreted 'HER2-mutated' as ERBB2 gene mutation (official symbol), not HER2 receptor status (IHC/ISH).",
-    "Used semi-join on mutation table to keep only primary tumors with at least one ERBB2 mutation record.",
-    "Filtered base table to 'Primary Tumor' sample_type before joining."
+    "HER2 refers to the ERBB2 gene (official symbol).",
+    "HER2-mutated means presence of a mutation in ERBB2 per the mutation table (gene-level presence, not variant details).",
+    "This selects primary tumors (sample_type = 'Primary Tumor') that have at least one ERBB2 mutation record.",
+    "HER2 receptor status (IHC/ISH) is a separate clinical measurement and is not used here."
   ],
   "cannot_answer": null
 }
@@ -982,27 +946,11 @@ Drafted steps:
           "Primary Tumor"
         ]
       }
-    ]
-  },
-  {
-    "op": "join",
-    "where": [],
-    "table": "clinical",
+    ],
+    "table": "samples",
     "on": "sample_id",
     "how": "inner",
     "allow_cross_sample": false
-  },
-  {
-    "op": "filter",
-    "where": [
-      {
-        "column": "additional_pharmaceutical_therapy",
-        "operator": "eq",
-        "values": [
-          "YES"
-        ]
-      }
-    ]
   }
 ]
 ```
@@ -1012,11 +960,10 @@ Notes from the AI:
 ```json
 {
   "assumptions": [
-    "Primary tumors defined as sample_type = 'Primary Tumor' in sample_manifest.",
-    "Chemotherapy receipt approximated by additional_pharmaceutical_therapy = 'YES' in clinical table (no dedicated chemotherapy column exists).",
-    "No treatment response variable (e.g., pathologic complete response, RECIST, recurrence after chemo) is available in this schema."
+    "Used sample_type = 'Primary Tumor' from the base sample_manifest to select primary tumors.",
+    "No column in the clinical table captures chemotherapy response (e.g., RECIST, pathologic complete response, or clinical response). Available columns only indicate whether therapy was given (additional_pharmaceutical_therapy, postoperative_rx_tx, targeted_molecular_therapy, radiation_therapy), not the outcome."
   ],
-  "cannot_answer": "The dataset does not contain a chemotherapy response variable. Available columns only indicate whether pharmaceutical therapy was given (additional_pharmaceutical_therapy), not whether the tumor responded. Cannot filter for 'responded to chemotherapy'."
+  "cannot_answer": "The TCGA-BRCA clinical data does not include a chemotherapy response field. The request asks for tumors that 'responded to chemotherapy', but the available data only records whether additional pharmaceutical therapy was given (YES/NO), not the treatment outcome. Therefore, the cohort can only be limited to primary tumors; the response criterion cannot be applied."
 }
 ```
 
