@@ -38,17 +38,19 @@ def load_example(name):
 
 
 def draft_with_ai():
-    from cohort_studio.llm import draft_steps
+    from cohort_studio.llm import draft_steps, provider
     key = ss.get("api_key") or os.environ.get("ANTHROPIC_API_KEY")
-    if not key:
-        ss.ai_notes = {"error": "Add an Anthropic API key in the sidebar, or write the steps by hand."}
+    # NVIDIA / Groq keys come from the environment (see llm.py); the sidebar field is for a Claude key.
+    if not key and provider() == "claude":
+        ss.ai_notes = {"error": "Add an Anthropic API key in the sidebar (or set NVIDIA_API_KEY before starting "
+                                "the app), or write the steps by hand."}
         return
     try:
         out = draft_steps(ss.request, api_key=key)
         set_steps(out["steps"])
         ss.ai_notes = out
-    except RuntimeError as e:
-        ss.ai_notes = {"error": str(e)}
+    except Exception as e:  # any API failure becomes a message; the rest of the page keeps working
+        ss.ai_notes = {"error": f"AI drafting failed: {e}"}
 
 
 # ---------------------------------------------------------------- sidebar
