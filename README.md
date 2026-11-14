@@ -66,6 +66,17 @@ the SQL version disagrees. **The demo example is the careless version on purpose
 `UNRESOLVED` and exits 2: that's the tool catching the inflated join. Its output files (`cohort_samples.csv`,
 `cohort.sql`) go in the current folder.
 
+## Output files
+| File | What it is | How to get it |
+|---|---|---|
+| **`cohort_samples.csv`** (the required output) | The cohort: **one row per 15-character `sample_id`** (plus `patient_id`). This is the file the organizers' checker compares with the correct cohort. | App: section 4, **cohort_samples.csv** button. CLI: written by `run_cohort.py` (`--out` to choose the path). |
+| `cohort.json` | The definition: request, every step, rows/samples/patients after each step, input file checksums and the data release used | App: section 4 |
+| `rebuild_cohort.py` | A script that rebuilds the same cohort from the raw files | App: section 4 |
+| `cohort.sql` | The independent DuckDB query from **Verify with SQL**; re-run with `python scripts/sql.py -f cohort.sql` | App: section 4 after Verify with SQL. CLI: `--verify` |
+| `cohort_diff.csv` | Samples that changed between two versions of a cohort | App: **Compare with an earlier version** |
+
+**Demo and judged version:** the git tag **`submission`** marks the exact commit we demo and submit.
+
 `pytest -q` runs 171 tests, all passing (known gaps are listed in [docs/GAPS.md](docs/GAPS.md)): the demo numbers, **31 cohort requests checked against independent DuckDB SQL
 answer keys** (`tests/test_answer_key.py`, queries in [docs/TRAP_LOG.md](docs/TRAP_LOG.md)), the SQL check and
 sample trace (`tests/test_verify.py`), the exported rebuild script, the recommended-fix and version-compare logic, and the app itself (`tests/test_app.py`).
