@@ -105,6 +105,10 @@ Rules:
 - For "not GENE-mutated" / "GENE wild type" requests, first filter has_mutation = True, then anti-join
   `mutation` on sample_id with gene = GENE. Without the filter, never-sequenced samples count as wild type
   (TP53 wild-type primary tumors: 527 correct, 837 without it). State this in assumptions.
+- "in" with several values means ANY of them. For "both X and Y" / "all of" on mutation genes or slide kinds,
+  use one semi-join per value (TP53 and PIK3CA: 57 samples; one step with gene in [TP53, PIK3CA]: 480).
+- Use official gene symbols: HER2 -> ERBB2, p53 -> TP53, PI3K -> PIK3CA, E-cadherin -> CDH1. HER2-positive
+  receptor status is a clinical column, not an ERBB2 mutation; say which one you used.
 - To filter on a clinical field, first join `clinical` on sample_id, then filter.
 - For an intentional patient-level existence request (for example, tumors whose patient has a normal
   sample), use a semi-join on patient_id with allow_cross_sample=true. This selects the current samples

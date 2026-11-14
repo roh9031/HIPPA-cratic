@@ -305,6 +305,29 @@ CASES = [
         notes="Uses the binary gene-level matrix; this identifies mutation presence, not a specific variant.",
     ),
     Case(
+        "tp53_and_pik3ca_primary",
+        "Primary tumors with both a TP53 and a PIK3CA mutation",
+        """SELECT sample_id FROM samples WHERE sample_type = 'Primary Tumor'
+             AND sample_id IN (SELECT sample_id FROM mutation WHERE gene = 'TP53')
+             AND sample_id IN (SELECT sample_id FROM mutation WHERE gene = 'PIK3CA')""",
+        steps=[PRIMARY, _semi("mutation", [{"column": "gene", "operator": "eq", "values": ["TP53"]}]),
+               _semi("mutation", [{"column": "gene", "operator": "eq", "values": ["PIK3CA"]}])],
+        expected_n=57,
+        # Trap (GAPS #32): one step with gene in [TP53, PIK3CA] means OR and gives 480. The engine warns.
+        notes="'Both' needs one semi-join per gene. gene IN (TP53, PIK3CA) = 480 (either one).",
+    ),
+    Case(
+        "diagnostic_and_frozen_slide",
+        "Primary tumors with both a diagnostic slide and a frozen slide",
+        """SELECT sample_id FROM samples WHERE sample_type = 'Primary Tumor'
+             AND sample_id IN (SELECT sample_id FROM slides WHERE slide_kind LIKE 'diagnostic%')
+             AND sample_id IN (SELECT sample_id FROM slides WHERE slide_kind LIKE 'frozen%')""",
+        steps=[PRIMARY, _semi("slides", [{"column": "slide_kind", "operator": "startswith", "values": ["diagnostic"]}]),
+               _semi("slides", [{"column": "slide_kind", "operator": "startswith", "values": ["frozen"]}])],
+        expected_n=1056,
+        notes="startswith [diagnostic, frozen] in one step means either kind: 1,098.",
+    ),
+    Case(
         "tp53_wild_type_primary",
         "Primary tumors without a TP53 mutation",
         """SELECT sample_id FROM samples

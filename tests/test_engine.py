@@ -128,3 +128,41 @@ def test_mutation_anti_join_warns_about_unsequenced_samples_and_offers_fix():
     _, fixed = run(fix_steps)
     assert fixed[-1].samples == 527
     assert not any(w.kind == "unsequenced_mutation" for r in fixed for w in r.warnings)
+
+
+def _mutation_semi(genes, op="in"):
+    return {"op": "join", "table": "mutation", "on": "sample_id", "how": "semi",
+            "where": [{"column": "gene", "operator": op, "values": genes}]}
+
+
+def test_two_genes_in_one_step_warns_any_vs_all_and_fix_requires_both():
+    # Trap round Nov 13 (GAPS #32): "TP53 and PIK3CA" built as one `in` step means TP53 OR PIK3CA.
+    _, res = run([PRIMARY, _mutation_semi(["TP53", "PIK3CA"])])
+    assert res[-1].samples == 480
+    w = next(w for w in res[-1].warnings if w.kind == "any_vs_all")
+    assert "480" in w.message and "57" in w.message
+    _, fixed = run(w.fixes[0]["steps"])
+    assert fixed[-1].samples == 57
+    assert not any(w.kind == "any_vs_all" for r in fixed for w in r.warnings)
+
+
+def test_single_value_join_has_no_any_vs_all_warning():
+    _, res = run([PRIMARY, _mutation_semi(["TP53"], op="eq")])
+    assert not any(w.kind in ("any_vs_all", "value_not_found") for w in res[-1].warnings)
+
+
+def test_gene_alias_not_found_suggests_symbol():
+    # GAPS #33: HER2 is the protein's name; the gene symbol in the mutation matrix is ERBB2.
+    _, res = run([PRIMARY, _mutation_semi(["HER2"], op="eq")])
+    w = next(w for w in res[-1].warnings if w.kind == "value_not_found")
+    assert "ERBB2" in w.message
+    _, fixed = run(w.fixes[0]["steps"])
+    assert fixed[-1].samples == 23
+
+
+def test_misspelled_filter_value_suggests_the_real_one():
+    _, res = run([{"op": "filter", "where": [{"column": "sample_type", "operator": "eq", "values": ["Primary Tumour"]}]}])
+    w = next(w for w in res[-1].warnings if w.kind == "value_not_found")
+    assert "Primary Tumor" in w.message
+    _, fixed = run(w.fixes[0]["steps"])
+    assert fixed[-1].samples == 1101

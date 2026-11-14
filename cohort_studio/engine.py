@@ -256,7 +256,7 @@ def run(steps: list[dict], ddir: str | None = None):
         warns: list[Warning_] = []
         try:
             if step["op"] == "filter":
-                df, warns = _filter(df, step)
+                df, warns = _filter(df, step, i, steps)
             elif step["op"] == "join":
                 df, warns = _join(df, step, i, steps, ddir)
             elif step["op"] == "collapse":
@@ -276,8 +276,9 @@ def run(steps: list[dict], ddir: str | None = None):
     return df, results
 
 
-def _filter(df, step):
+def _filter(df, step, i=0, steps=()):
     warns = _missing_value_warnings(df, step["where"], "the current cohort")
+    warns += _value_not_found_warnings(df, step, i, list(steps), "the current cohort")
     return df[_apply_where(df, step["where"], "the current cohort")], warns
 
 
@@ -317,11 +318,91 @@ def _leaf_conditions(conditions):
     return leaves
 
 
+# Common names people use for genes, mapped to the symbols in mutation_gene_level.tsv.gz.
+GENE_ALIASES = {"her2": "ERBB2", "her-2": "ERBB2", "neu": "ERBB2", "her2/neu": "ERBB2", "p53": "TP53",
+                "pi3k": "PIK3CA", "pik3": "PIK3CA", "e-cadherin": "CDH1", "ecad": "CDH1", "er": "ESR1",
+                "esr": "ESR1", "pr": "PGR", "brca": "BRCA1"}
+
+
+def _value_not_found_warnings(df, step, i, steps, where_name):
+    """`gene = HER2` matches nothing (the symbol is ERBB2): say so and suggest real values (trap round, GAPS #33)."""
+    import difflib
+
+    warns = []
+    raw_where = (steps[i - 1].get("where") or []) if 0 < i <= len(steps) else []
+    for c_i, c in enumerate(step.get("where") or []):
+        if "any" in c or "all" in c or c.get("operator") not in ("eq", "in") or c.get("column") not in df.columns:
+            continue
+        col = df[c["column"]]
+        if pd.api.types.is_numeric_dtype(col) or pd.api.types.is_bool_dtype(col):
+            continue
+        known = col.dropna().astype(str).str.strip()
+        known = known[~_unknown_value_mask(known)].unique()
+        lower = {k.lower(): k for k in known}
+        for v in c.get("values") or []:
+            if str(v).strip().lower() in lower:
+                continue
+            alias = GENE_ALIASES.get(str(v).strip().lower()) if c["column"] == "gene" else None
+            sugg = [alias] if alias and alias.lower() in lower else [
+                lower[m] for m in difflib.get_close_matches(str(v).strip().lower(), list(lower), n=3, cutoff=0.6)]
+            msg = f"No record in {where_name} has `{c['column']}` = {v!r}, so this value matches nothing."
+            if sugg:
+                msg += " Did you mean " + " or ".join(repr(s) for s in sugg) + "?"
+            if alias:
+                msg += f" ({v} is a common name; the gene symbol in this data is {alias}.)"
+            fixes = []
+            if sugg and c_i < len(raw_where) and raw_where[c_i].get("column") == c["column"]:
+                new = copy.deepcopy(steps)
+                vals = new[i - 1]["where"][c_i]["values"]
+                new[i - 1]["where"][c_i]["values"] = [sugg[0] if x == v else x for x in vals]
+                fixes.append({"label": f"Use {sugg[0]!r} instead of {v!r}", "steps": new})
+            warns.append(Warning_("value_not_found", "info", msg, fixes=fixes))
+    return warns
+
+
+def _any_vs_all_warning(df, right, step, i, steps, on):
+    """`gene in [TP53, PIK3CA]` keeps samples with ANY of them. If the user meant ALL, the count is very
+    different (480 vs 57), so show both and offer one step per value (trap round, GAPS #32)."""
+    where = step.get("where") or []
+    for c_i, c in enumerate(where):
+        if "any" in c or "all" in c or c.get("operator") not in ("in", "startswith", "contains"):
+            continue
+        vals = c.get("values") or []
+        if len(vals) < 2 or c.get("column") not in right.columns:
+            continue
+        others = [w for k, w in enumerate(where) if k != c_i]
+        base = right[_apply_where(right, others, "")]
+        keysets = [set(base.loc[_mask(base, dict(c, values=[v]), ""), on].dropna()) for v in vals]
+        n_any = df.loc[df[on].isin(set().union(*keysets)), "sample_id"].nunique()
+        n_all = df.loc[df[on].isin(set.intersection(*keysets)), "sample_id"].nunique()
+        if n_any == n_all:
+            continue
+        names = ", ".join(str(v) for v in vals)
+        split = copy.deepcopy(steps)
+        one = split.pop(i - 1)
+        for v in reversed(vals):
+            s = copy.deepcopy(one)
+            s["how"] = "semi"
+            s["where"][c_i] = dict(s["where"][c_i], operator="eq" if c["operator"] == "in" else c["operator"],
+                                   values=[v])
+            split.insert(i - 1, s)
+        return [Warning_(
+            "any_vs_all", "info",
+            f"`{c['column']}` {c['operator']} [{names}] keeps samples with **any** of these ({n_any:,} samples). "
+            f"Samples with **all** of them: {n_all:,}. If the request says \"and\" / \"both\", use one step per value.",
+            fixes=[{"label": f"Require all of {names} (one step each)", "steps": split}],
+        )]
+    return []
+
+
 def _join(df, step, i, steps, ddir):
     table, on, how = step["table"], step.get("on", "sample_id"), step.get("how", "inner")
     allow_cross_sample = step.get("allow_cross_sample", False) and how in ("semi", "anti")
     right = data.load(table, ddir)
     warns = _missing_value_warnings(right, step.get("where"), f"table {table!r}", cohort=df, on=on)
+    warns += _value_not_found_warnings(right, step, i, steps, f"table {table!r}")
+    if how in ("semi", "inner"):
+        warns += _any_vs_all_warning(df, right, step, i, steps, on)
     if table == "mutation" and how == "anti" and "has_mutation" in df.columns:
         unsequenced = df[~df["has_mutation"].astype(bool)]
         if len(unsequenced):

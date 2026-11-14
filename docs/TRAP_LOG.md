@@ -301,3 +301,20 @@ SELECT count(DISTINCT sample_id) samples, count(*) slides FROM slides
 WHERE sample_id NOT IN (SELECT sample_id FROM samples);                                   -- 24 samples, 50 slides
 ```
 The app's **Data notes** panel lists the mismatch, and "Why isn't a sample in my cohort?" explains any of the 24.
+
+## Trap round, Nov 13 evening (mutation data)
+14 requests, engine vs hand-written DuckDB SQL. 11 passed; 3 failed silently and are now warned + fixable:
+
+| Request | Naive steps | Correct | Status |
+|---|---|---|---|
+| Primary tumors with **both** TP53 and PIK3CA mutations | one semi-join `gene in [TP53, PIK3CA]` = 480 | 57 (one semi-join per gene) | GAPS #32, warning + fix |
+| Primary tumors with **neither** TP53 nor PIK3CA | anti-join alone = 621 | 311 (has_mutation first) | GAPS #31 warning already fires |
+| HER2-mutated primary tumors | `gene = HER2` = 0 | 23 (`ERBB2`) | GAPS #33, warning + fix |
+| Both a diagnostic and a frozen slide | one step = 1,098 | 1,056 | GAPS #32 |
+| Passed: TP53 or PIK3CA (480), its inner join (537 rows, inflation flagged), TP53 mutated + PIK3CA wild type (207), ER+ TP53 (114), under 50 TP53 (85), lowercase `tp53` (264), mutation on patient_id (264), metastatic TP53 (0: mutation data covers primary tumors only), one per patient (264), left join (1,101) | | | ✅ |
+
+```sql
+SELECT count(*) FROM samples WHERE sample_type='Primary Tumor'
+  AND sample_id IN (SELECT sample_id FROM mutation WHERE gene='TP53')
+  AND sample_id IN (SELECT sample_id FROM mutation WHERE gene='PIK3CA');   -- 57
+```
