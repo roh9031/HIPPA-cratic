@@ -19,6 +19,7 @@ the organizers. The challenge repo gives only the data, the briefs, the rules an
 | AI drafting (`llm.py`) | ⚠️ never tested with a real key |
 | Tests | ✅ 158 tests, all passing: 31 trap cases with DuckDB answer keys (all pass since B's OR and patient-level fixes, Nov 12), `AppTest` UI tests, SQL check, rebuild, recommended-fix and version-compare tests. Known gaps: [GAPS.md](GAPS.md) |
 | Clean install from README | ✅ tested Nov 12 (fresh clone of both repos, new venv). Rerun after the last merge on Friday |
+| Checkpoint 2 (paired team) | ✅ Nov 13: the paired team followed only the README on their own machine. All tests passed (152 at that commit), demo funnel matched (776 rows / 731 samples, both fixes offered), `--verify` matched at every step, `--why TCGA-E2-A15E-01` traced to step 4, survival example caught all three issues, `--makeup` showed TVD 0.14 / 0.16. Nothing broke, nothing to fix |
 | README | ⚠️ missing demo video link (team names added) |
 
 Demo numbers: Primary tumor 1,101 → RNA 1,097 → protein 742 → join diagnostic slides **776 rows / 731 samples**
