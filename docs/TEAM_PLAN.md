@@ -17,7 +17,7 @@ the organizers. The challenge repo gives only the data, the briefs, the rules an
 | **Verify with SQL** + **Why isn't sample X** (`sqlcheck.py`, DuckDB) | ✅ works, tested |
 | **Makeup shift** after each step: site, PAM50, ER, age (`makeup.py`, `--makeup`) | ✅ works, tested |
 | AI drafting (`llm.py`) | ⚠️ never tested with a real key |
-| Tests | ✅ 152 tests, all passing: 30 trap cases with DuckDB answer keys (all pass since B's OR and patient-level fixes, Nov 12), `AppTest` UI tests, SQL check, rebuild, recommended-fix and version-compare tests. Known gaps: [GAPS.md](GAPS.md) |
+| Tests | ✅ 158 tests, all passing: 31 trap cases with DuckDB answer keys (all pass since B's OR and patient-level fixes, Nov 12), `AppTest` UI tests, SQL check, rebuild, recommended-fix and version-compare tests. Known gaps: [GAPS.md](GAPS.md) |
 | Clean install from README | ✅ tested Nov 12 (fresh clone of both repos, new venv). Rerun after the last merge on Friday |
 | README | ⚠️ missing demo video link (team names added) |
 

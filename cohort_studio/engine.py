@@ -168,21 +168,22 @@ def _mask(df: pd.DataFrame, cond: dict, where: str) -> pd.Series:
         except ValueError:
             raise StepError(f"{op!r} on {col!r} needs a number, got {vals[0]!r}.")
         return {"gt": num > x, "ge": num >= x, "lt": num < x, "le": num <= x}[op].fillna(False)
-    text = s.astype(str).str.strip().str.lower().where(s.notna() & ~unknown, None)
-    text = text.map(_normalise_boolean_value)
-    lv = [_normalise_boolean_value(v.strip().lower()) for v in vals]
+    raw_text = s.astype(str).str.strip().str.lower().where(s.notna() & ~unknown, None)
+    raw_lv = [v.strip().lower() for v in vals]
     if op in ("in", "eq", "not_in", "ne"):
-        m = text.isin(lv)
-        # Numbers match by value too: a column with blanks is stored as float, so 40 reads as "40.0" (objective = 40).
-        nums = pd.to_numeric(pd.Series(lv, dtype=object), errors="coerce").dropna()
+        # yes / 1 / true are the same value (GAPS #10) ...
+        m = raw_text.map(_normalise_boolean_value).isin([_normalise_boolean_value(v) for v in raw_lv])
+        # ... and numbers match by value: a column with blanks is stored as float, so 40 reads as "40.0"
+        # (objective = 40) and 1 reads as "1.0" (DSS = 1). Compare the numbers before the yes/true mapping.
+        nums = pd.to_numeric(pd.Series(raw_lv, dtype=object), errors="coerce").dropna()
         if len(nums):
-            m = m | pd.to_numeric(text, errors="coerce").isin(list(nums))
+            m = m | pd.to_numeric(raw_text, errors="coerce").isin(list(nums))
         if op in ("not_in", "ne"):
             m = ~m & s.notna() & ~unknown
     elif op == "startswith":
-        m = text.fillna("").str.startswith(tuple(lv))
+        m = raw_text.fillna("").str.startswith(tuple(raw_lv))
     elif op == "contains":
-        m = text.fillna("").apply(lambda t: any(v in t for v in lv))
+        m = raw_text.fillna("").apply(lambda t: any(v in t for v in raw_lv))
     return m.astype(bool)
 
 

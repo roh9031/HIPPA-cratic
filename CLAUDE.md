@@ -41,7 +41,7 @@ problems with one-click fixes, and exports `cohort_samples.csv` (one row per 15-
 - `cohort_studio/makeup.py`: after each step, TVD of site / PAM50 / ER / age-band mix before vs after (note at
   ≥ 0.10; a shift on a filtered attribute is "expected"). Demo protein step: site 0.14, PAM50 0.16.
 - `app.py`: Streamlit UI. `run_cohort.py`: CLI (`--verify`, `--why ID`, `--makeup`; exit 2 = unresolved problems, 3 = SQL
-  disagrees). `tests/`: pytest; `test_answer_key.py` holds 30 trap cases with SQL answer keys.
+  disagrees). `tests/`: pytest; `test_answer_key.py` holds 31 trap cases with SQL answer keys.
 
 ## Known-good numbers (demo)
 Primary tumor 1,101 → has RNA 1,097 → has protein 742 → join diagnostic slides = 776 rows / 731 samples (inflated)
@@ -58,6 +58,6 @@ All five data layers = 535; plus a diagnostic slide = 531 (572 rows if inner-joi
 ## Open TODOs
 - Test AI drafting on 5–10 requests; more trap examples and tests
 - OR groups (`{"any"/"all": [...]}`) and patient-level matching (`allow_cross_sample`) work in the engine,
-  the builder (and/or switch per condition; nested groups read-only) and the SQL check; all 30 trap cases pass. Next gaps in docs/GAPS.md
+  the builder (and/or switch per condition; nested groups read-only) and the SQL check; all 31 trap cases pass. Next gaps in docs/GAPS.md
 - More joinable tables (mutation/protein values); add the demo video link to the README
 - Run `pytest -q` and the app after every change
