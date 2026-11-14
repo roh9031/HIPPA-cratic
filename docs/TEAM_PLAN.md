@@ -18,7 +18,7 @@ the organizers. The challenge repo gives only the data, the briefs, the rules an
 | **Makeup shift** after each step: site, PAM50, ER, age (`makeup.py`, `--makeup`) | ✅ works, tested |
 | AI drafting (`llm.py`) | ⚠️ never tested with a real key |
 | Tests | ✅ 158 tests, all passing: 31 trap cases with DuckDB answer keys (all pass since B's OR and patient-level fixes, Nov 12), `AppTest` UI tests, SQL check, rebuild, recommended-fix and version-compare tests. Known gaps: [GAPS.md](GAPS.md) |
-| Clean install from README | ✅ Final run Nov 13 on commit 8de162e: fresh clone of both repos, `fetch.py` (all checksums ok), new venv, 158 tests passed, demo 731 with SQL match, `--why` / `--makeup` / HER2 197 / SQL console ok, app starts with no errors. Rerun only if code changes after this |
+| Clean install from README | ✅ Final run Nov 14 on commit 42a6ed5 (and Nov 13 on 8de162e): fresh clone of both repos, `fetch.py` (all checksums ok), new venv, 158 tests passed, demo 731 with SQL match, `--why` / `--makeup` / HER2 197 / SQL console ok, app starts with no errors. Rerun only if code changes after this |
 | Checkpoint 2 (paired team) | ✅ Nov 13: the paired team followed only the README on their own machine. All tests passed (152 at that commit), demo funnel matched (776 rows / 731 samples, both fixes offered), `--verify` matched at every step, `--why TCGA-E2-A15E-01` traced to step 4, survival example caught all three issues, `--makeup` showed TVD 0.14 / 0.16. Nothing broke, nothing to fix |
 | README | ⚠️ missing demo video link (team names added) |
 
