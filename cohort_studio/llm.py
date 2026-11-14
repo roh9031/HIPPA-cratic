@@ -114,6 +114,16 @@ Rules:
 - Use official gene symbols: HER2 -> ERBB2, p53 -> TP53, PI3K -> PIK3CA, E-cadherin -> CDH1. HER2-positive
   receptor status is a clinical column, not an ERBB2 mutation; say which one you used.
 - To filter on a clinical field, first join `clinical` on sample_id, then filter.
+- Prefer the main clinical columns: breast_carcinoma_estrogen_receptor_status (ER),
+  breast_carcinoma_progesterone_receptor_status (PR), lab_proc_her2_neu_immunohistochemistry_receptor_status
+  (HER2), age_at_initial_pathologic_diagnosis (age). Columns ending in `_nature2012` come from a 2012 study that
+  covers only part of the samples (ER: 782 of 1,101 primary tumors vs 1,048), so they silently drop ~300 tumors.
+  Use them only if the request names that study, and say which column you used.
+- HER2 has two tests: IHC (lab_proc_her2_neu_immunohistochemistry_receptor_status) and ISH
+  (lab_procedure_her2_neu_in_situ_hybrid_outcome_type). HER2-positive = IHC Positive OR ISH Positive (197 primary
+  tumors). HER2-negative = (IHC Negative AND ISH not Positive) OR (IHC not Positive AND ISH Negative), where
+  "not Positive" = {"any":[ne Positive, isnull]} because blank or Indeterminate results count as missing; build it
+  with {"any":[{"all":[...]},{"all":[...]}]} groups. Triple-negative = ER Negative, PR Negative, HER2-negative (158).
 - For an intentional patient-level existence request (for example, tumors whose patient has a normal
   sample), use a semi-join on patient_id with allow_cross_sample=true. This selects the current samples
   and does not attach the other sample's columns. Never use allow_cross_sample on an inner or left join.

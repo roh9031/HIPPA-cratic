@@ -6,8 +6,9 @@ Put this file in scripts/ in the team repo, then from the repo root:
     python3 scripts/run_ai_eval.py             # all 10 requests
     python3 scripts/run_ai_eval.py 1 4 7       # only these
 
-It writes docs/ai_eval_results.md: a summary table plus every drafted step list, so you can score each
-draft in docs/ai_eval.md. The automatic scores are suggestions. You make the final call.
+It updates the "Latest automatic run" section of docs/AI_EVAL.md (found whatever its capitalization) with a
+summary table and every drafted step list. Everything else in that file, like your hand-written scores and
+notes, is left alone. The automatic scores are suggestions. You make the final call.
 
 Only the request text goes to the AI (through your llm.py). No patient rows are sent.
 """
@@ -24,6 +25,11 @@ sys.path.insert(0, str(ROOT))
 
 # If the script picks the wrong function in llm.py, put its name here, e.g. "draft_steps".
 DRAFT_FUNCTION = None
+
+# Where results go. Only the part between these two markers is replaced on each run.
+RESULTS_FILE_NAME = "AI_EVAL.md"
+START_MARKER = "<!-- AUTOMATIC RESULTS START: written by scripts/run_ai_eval.py, edits here are overwritten -->"
+END_MARKER = "<!-- AUTOMATIC RESULTS END -->"
 
 try:
     from cohort_studio import engine, llm
@@ -158,12 +164,22 @@ def run_one(req, draft, api_key):
     return record
 
 
-def write_report(records, path, provider):
+def results_file():
+    """Find docs/AI_EVAL.md whatever its capitalization (macOS treats ai_eval.md and AI_EVAL.md as one file)."""
+    docs = ROOT / "docs"
+    docs.mkdir(parents=True, exist_ok=True)
+    for existing in docs.iterdir():
+        if existing.name.lower() == RESULTS_FILE_NAME.lower():
+            return existing
+    return docs / RESULTS_FILE_NAME
+
+
+def build_report(records, provider):
     lines = [
-        "# AI drafting results",
+        "## Latest automatic run",
         "",
         f"Run {dt.datetime.now().strftime('%Y-%m-%d %H:%M')} with {provider}. Automatic scores are suggestions: "
-        "check each draft below and record the final score in `docs/ai_eval.md`.",
+        "check each draft and record the final score in the Results table above.",
         "",
         "| # | Request | Suggested score | Samples (draft / expected) | Duplicate rows | Seconds |",
         "|---|---|---|---|---|---|",
@@ -177,14 +193,28 @@ def write_report(records, path, provider):
                      f"| {r['seconds']} |")
     lines.append("")
     for r in records:
-        lines += [f"## {r['n']}. {r['text']}", "", f"Tests: {r['tests']}. Suggested score: {r['score']}.", ""]
+        lines += [f"### {r['n']}. {r['text']}", "", f"Tests: {r['tests']}. Suggested score: {r['score']}.", ""]
         if r["error"]:
             lines += [f"Error: `{r['error']}`", ""]
         lines += ["Drafted steps:", "", "```json", json.dumps(r["steps"], indent=2), "```", ""]
         if r["extras"]:
             lines += ["Notes from the AI:", "", "```json", json.dumps(r["extras"], indent=2, default=str), "```", ""]
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text("\n".join(lines))
+    return "\n".join(lines)
+
+
+def write_report(records, provider):
+    """Replace only the automatic-results section of the eval sheet, keeping everything else."""
+    path = results_file()
+    block = f"{START_MARKER}\n{build_report(records, provider)}\n{END_MARKER}"
+    text = path.read_text() if path.exists() else "# AI drafting evaluation\n"
+    if START_MARKER in text and END_MARKER in text:
+        before = text[:text.index(START_MARKER)]
+        after = text[text.index(END_MARKER) + len(END_MARKER):]
+        text = before + block + after
+    else:
+        text = text.rstrip() + "\n\n" + block + "\n"
+    path.write_text(text)
+    return path
 
 
 def main():
@@ -202,21 +232,20 @@ def main():
         api_key = None   # the other providers read their own key from the environment
     provider = labels[chosen]
     print(f"Provider: {provider}")
-    chosen = {int(a) for a in sys.argv[1:]} or {r["n"] for r in REQUESTS}
+    wanted = {int(a) for a in sys.argv[1:]} or {r["n"] for r in REQUESTS}
     draft = find_draft_function()
     print(f"Using llm.{draft.__name__}\n")
 
     records = []
     for req in REQUESTS:
-        if req["n"] not in chosen:
+        if req["n"] not in wanted:
             continue
         print(f"{req['n']:>2}. {req['text']}")
         record = run_one(req, draft, api_key)
         print(f"    {record['score']}\n")
         records.append(record)
 
-    out = ROOT / "docs" / "ai_eval_results.md"
-    write_report(records, out, provider)
+    out = write_report(records, provider)
     passed = sum(r["score"].startswith(("Correct", "One edit away")) for r in records)
     print(f"{passed}/{len(records)} correct or one edit away by automatic check. Details: {out}")
 
