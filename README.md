@@ -91,11 +91,20 @@ flags both the inflation and the 100 rows that attach another sample's record (n
   be switched to **or** ("HER2-positive by IHC *or* ISH" = 197 tumors, built without typing anything). The value lists come from the cohort as it stands at that step.
 - `cohort_studio/engine.py`: a cohort is a JSON list of `filter` / `join` / `collapse` steps. After every
   step it checks: did rows grow faster than distinct samples? Did a patient-level join attach records from a
-  different sample? Were samples dropped only because a value was missing? Each problem comes with fixes.
-- `cohort_studio/llm.py`: optional. Claude (`claude-opus-5-5`, user-supplied key) turns the request into
-  draft steps using structured output. It sees only table/column names and category values, never patient
-  rows. It lists its assumptions and says when the data can't answer. The user edits the draft, and every
-  count comes from the engine, not the model.
+  different sample? Were samples dropped only because a value was missing or coded unknown (`Indeterminate`,
+  `[Discrepancy]`)? It also catches request-level traps: `gene in [TP53, PIK3CA]` means *either* gene (480, not the
+  57 with both), "not mutated" would count never-sequenced tumors as wild type (837 vs 527), and a value that
+  doesn't exist (`gene = HER2`) suggests the real one (`ERBB2`). Each problem comes with one-click fixes.
+- `cohort_studio/advice.py`: which fix gets the ★ and why (e.g. a semi-join keeps each sample once; a collapse
+  keeps an arbitrary row). `cohort_studio/versions.py`: **Compare with an earlier version** lists the samples
+  that moved between two versions of the cohort in this session.
+- `cohort_studio/llm.py` (+ `llm_nvidia.py`): optional. Claude (`claude-opus-5-5`) or NVIDIA Nemotron, with the
+  user's own key, turns the request into draft steps using structured output. It sees only table/column names
+  and category values, never patient rows. It lists its assumptions, says when the data can't answer, and
+  drafts no steps for treatment, diagnosis or risk questions. The user edits the draft, and every count comes
+  from the engine, not the model. Evaluated on 14 requests with known answers
+  ([docs/AI_EVAL.md](docs/AI_EVAL.md), `scripts/run_ai_eval.py`): 14/14 correct, one edit away or correctly
+  declined with the current prompt.
 - `cohort_studio/sqlcheck.py`: **Verify with SQL.** The button in section 4 of the app translates the steps
   into one DuckDB query (a CTE per step), runs it on the raw files without the engine, and compares rows,
   samples and patients after every step plus the final sample IDs. The SQL can be downloaded as `cohort.sql`
@@ -109,6 +118,12 @@ flags both the inflation and the 100 rows that attach another sample's record (n
   the PAM50 mix (0.16). A shift on something the step itself filters on is labelled expected.
 - `cohort_studio/export.py`: `cohort_samples.csv` (one row per 15-character `sample_id`), `cohort.json`
   (steps, funnel, input checksums) and `rebuild_cohort.py`.
+- `cohort_studio/data.py`: loads the frozen files (base: `sample_manifest.csv`) and checks their checksums,
+  shown in the app's sidebar.
+
+**Tested:** besides `pytest`, a clean install from this README in a fresh folder (Nov 13 and 14), and Checkpoint 2:
+the paired team ran everything from this README on their own machine with nothing broken. Bugs found by our
+trap hunting, and how each was fixed, are in [docs/GAPS.md](docs/GAPS.md) and [docs/TRAP_LOG.md](docs/TRAP_LOG.md).
 
 ## Limitations (also shown in the app)
 - `sample_manifest.csv` is the official list of samples and of which data each has (the organizers' rule).
@@ -116,6 +131,13 @@ flags both the inflation and the 100 rows that attach another sample's record (n
   The app's **Data notes** panel lists every such mismatch between the files, computed live.
 - Layer membership (`has_*`) comes from `sample_manifest.csv`. The mutation matrix is checked for binary values; other layer values aren't quality-checked.
 - Joinable tables: clinical, survival, mutation, slides. Gene-level mutation presence (for example, TP53-mutated) can be filtered; RNA/protein/copy-number values and specific mutation variants can't yet.
+- Mutation data covers primary tumors only. There is no treatment-response data, so such requests get
+  "the data can't answer this".
+- Some concepts live in several columns that disagree (HER2 in 3 columns; PAM50; `*_nature2012` columns cover
+  only part of the patients). We use the main clinical columns and say so.
+- AI drafts can vary between runs; a person reviews every draft, and the engine and SQL check do the counting.
+- The loaders, the SQL check's table definitions and the makeup attributes are written for TCGA-BRCA. The
+  engine's checks themselves are general (keys `sample_id` / `patient_id`).
 - A cohort is selected for research. Nothing here is a diagnosis, risk score or clinical claim.
 
 ## Data and licenses
