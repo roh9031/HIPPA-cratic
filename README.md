@@ -31,7 +31,8 @@ python -m venv .venv
 .venv\Scripts\activate          # macOS/Linux: source .venv/bin/activate
 pip install -r requirements.txt
 ```
-Windows: keep the folder path short (e.g. `D:\oncosyshackathon`). A very deep path can make `pip install` fail on
+macOS/Linux: if `python` isn't found, use `python3` for the `fetch.py` and `venv` lines; after activating the venv,
+`python` works. Windows: keep the folder path short (e.g. `D:\oncosyshackathon`). A very deep path can make `pip install` fail on
 the long-path limit. In `cmd`, switching drives needs `cd /d D:\oncosyshackathon`.
 
 ## Run
