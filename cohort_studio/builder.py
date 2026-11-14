@@ -25,6 +25,8 @@ from . import data, engine
 
 WIDGET_PREFIX = "b_w_"
 MAX_VALUE_OPTIONS = 60
+# A new condition starts on the first of these the table has, not on sample_id (too many values to list).
+PREFERRED_COLUMNS = ("gene", "slide_kind", "breast_carcinoma_estrogen_receptor_status", "OS", "sample_type")
 
 OP_LABELS = {"filter": "Filter rows", "join": "Join a table", "collapse": "Collapse rows"}
 HOW_LABELS = {
@@ -226,7 +228,9 @@ def _condition(uid: int, cuid: int, columns: list[str], values: dict[str, list[s
     val_key = f"{WIDGET_PREFIX}{uid}_{cuid}_vals"
     num_key = f"{WIDGET_PREFIX}{uid}_{cuid}_num"
     seed_vals = [str(v) for v in (seed.get("values") or [])]
-    ss.setdefault(col_key, seed.get("column") or (columns[0] if columns else ""))
+    first = next((c for c in PREFERRED_COLUMNS if c in columns), next((c for c in columns if c not in data.KEYS),
+                                                                      columns[0] if columns else ""))
+    ss.setdefault(col_key, seed.get("column") or first)
     ss.setdefault(opr_key, seed.get("operator") or "in")
     ss.setdefault(val_key, seed_vals)
     ss.setdefault(num_key, seed_vals[0] if seed_vals else "")
@@ -253,6 +257,9 @@ def _condition(uid: int, cuid: int, columns: list[str], values: dict[str, list[s
         num = row.text_input("Number", key=num_key, placeholder="e.g. 1825")
         picked = [num.strip()] if num.strip() else []
     else:
+        if col not in values:
+            st.caption(":material/info: This column has too many different values to list, or holds numbers. "
+                       "Type a value and press Enter, or pick a comparison like *is less than* for a number.")
         picked = [str(v) for v in row.multiselect(
             "Values", _with_current(values.get(col, []), ss[val_key]), key=val_key,
             accept_new_options=True, placeholder="pick a value, or type one",
