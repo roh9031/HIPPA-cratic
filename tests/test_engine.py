@@ -50,6 +50,41 @@ def test_intentional_patient_level_match_allows_cross_sample_selection():
     assert "cross_sample" not in kinds(res[-1])
 
 
+def test_patient_level_anti_join_flags_cross_sample_exclusions(monkeypatch):
+    samples = pd.DataFrame([
+        {"sample_id": "S1", "patient_id": "P1", "sample_type": "Primary Tumor"},
+        {"sample_id": "S2", "patient_id": "P1", "sample_type": "Solid Tissue Normal"},
+    ])
+    survival = pd.DataFrame([{"sample_id": "S2", "patient_id": "P1"}])
+    original_load = __import__("cohort_studio.engine", fromlist=["data"]).data.load
+
+    def load(table, ddir=None):
+        return {"samples": samples, "survival": survival}[table]
+
+    monkeypatch.setattr("cohort_studio.engine.data.load", load)
+    steps = [{"op": "join", "table": "survival", "on": "patient_id", "how": "anti"}]
+    _, res = run(steps)
+    warning = next(w for w in res[-1].warnings if w.kind == "cross_sample")
+    assert "excluded only because a *different*" in warning.message
+    _, fixed = run(warning.fixes[0]["steps"])
+    assert not any(w.kind == "cross_sample" for r in fixed for w in r.warnings)
+    monkeypatch.setattr("cohort_studio.engine.data.load", original_load)
+
+
+def test_intentional_patient_level_anti_join_allows_cross_sample_selection(monkeypatch):
+    samples = pd.DataFrame([
+        {"sample_id": "S1", "patient_id": "P1", "sample_type": "Primary Tumor"},
+        {"sample_id": "S2", "patient_id": "P1", "sample_type": "Solid Tissue Normal"},
+    ])
+    survival = pd.DataFrame([{"sample_id": "S2", "patient_id": "P1"}])
+    monkeypatch.setattr("cohort_studio.engine.data.load",
+                        lambda table, ddir=None: {"samples": samples, "survival": survival}[table])
+    steps = [{"op": "join", "table": "survival", "on": "patient_id",
+              "how": "anti", "allow_cross_sample": True}]
+    _, res = run(steps)
+    assert "cross_sample" not in kinds(res[-1])
+
+
 def test_allow_cross_sample_must_be_boolean():
     _, res = run([{"op": "join", "table": "survival", "on": "patient_id",
                    "allow_cross_sample": "yes"}])
@@ -166,3 +201,19 @@ def test_misspelled_filter_value_suggests_the_real_one():
     assert "Primary Tumor" in w.message
     _, fixed = run(w.fixes[0]["steps"])
     assert fixed[-1].samples == 1101
+
+
+def test_boolean_like_values_match_manifest_flags():
+    for value in ("yes", "1", "true"):
+        _, res = run([PRIMARY,
+                      {"op": "filter", "where": [{"column": "has_rna", "operator": "eq", "values": [value]}]}])
+        assert res[-1].samples == 1097
+
+
+def test_patient_collapse_prefers_primary_tumor():
+    steps = [{"op": "filter", "where": [{"column": "sample_type", "operator": "in",
+                                         "values": ["Primary Tumor", "Metastatic"]}]},
+             {"op": "collapse", "level": "patient"}]
+    df, res = run(steps)
+    assert res[-1].samples == 1101
+    assert set(df["sample_type"]) == {"Primary Tumor"}
