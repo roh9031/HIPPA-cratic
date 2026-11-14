@@ -66,5 +66,5 @@ All five data layers = 535; plus a diagnostic slide = 531 (572 rows if inner-joi
 ## Open TODOs
 - OR groups (`{"any"/"all": [...]}`) and patient-level matching (`allow_cross_sample`) work in the engine,
   the builder (and/or switch per condition; nested groups read-only) and the SQL check; all 31 trap cases pass. Next gaps in docs/GAPS.md
-- More joinable tables (mutation/protein values); add the demo video link to the README
+- More joinable tables (RNA/protein/copy-number values). Demo video: https://youtu.be/7aXj0ZswJ8U
 - Run `pytest -q` and the app after every change

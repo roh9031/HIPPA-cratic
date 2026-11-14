@@ -9,7 +9,7 @@ rebuilds the cohort.
 
 **Team HIPPA-cratics:** Rohini Bidnurmath (captain) · Rae Michelle · Hanpeng Yang · Sonal Gabburi · Ronit Jariwala
 
-**Demo video:** _add link_ (screen recording, no audio). What it shows, in order:
+**Demo video:** https://youtu.be/7aXj0ZswJ8U (screen recording, no audio). What it shows, in order:
 1. **Main workflow:** the demo request ("primary tumors with both RNA and protein data and a diagnostic slide") and its 4 steps; the funnel goes 1,101 → 1,097 → 742 →
    **776 rows / 731 samples**. The diagnostic-slide join is flagged (45 tumors have two slides), the recommended fix
    is applied in one click, and rows = samples = 731.
