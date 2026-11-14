@@ -52,7 +52,9 @@ def fetch_supabase(url: str, key: str, tables: list[str], page: int = 1000) -> d
     if not re.match(r"^https://[A-Za-z0-9.-]+$", url):
         raise ValueError("The Supabase URL should look like https://<project>.supabase.co")
     key = (key or "").strip().strip("\"'")
-    headers = {"apikey": key, "Authorization": f"Bearer {key}", "Range-Unit": "items"}
+    headers = {"apikey": key, "Range-Unit": "items"}
+    if key.startswith("eyJ"):   # a legacy anon/service key is a JWT and also goes in Authorization; a new
+        headers["Authorization"] = f"Bearer {key}"   # sb_publishable_/sb_secret_ key goes in apikey only
     out = {}
     for t in [t.strip() for t in tables if t.strip()]:
         rows, start = [], 0

@@ -124,3 +124,20 @@ def test_supabase_fetch_pages_and_errors(monkeypatch):
         custom.fetch_supabase("https://abc.supabase.co", "key", ["missing"])
     with pytest.raises(ValueError):
         custom.fetch_supabase("http://not-https.example", "key", ["samples"])
+
+
+def test_supabase_key_headers(monkeypatch):
+    seen = []
+
+    class R:
+        status_code, text = 200, ""
+
+        def json(self):
+            return [{"sample_id": "S1"}]
+
+    import requests
+    monkeypatch.setattr(requests, "get", lambda url, params, timeout, headers: seen.append(headers) or R())
+    custom.fetch_supabase("https://abc.supabase.co", "eyJhbGciOiJIUzI1NiJ9.legacy", ["samples"])
+    custom.fetch_supabase("https://abc.supabase.co", "sb_publishable_abc", ["samples"])
+    assert seen[0]["Authorization"] == "Bearer eyJhbGciOiJIUzI1NiJ9.legacy" and seen[0]["apikey"].startswith("eyJ")
+    assert "Authorization" not in seen[1] and seen[1]["apikey"] == "sb_publishable_abc"
