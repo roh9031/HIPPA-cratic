@@ -46,11 +46,71 @@ TABLES = {
     },
 }
 
-def data_dir() -> Path:
-    env = os.environ.get("ONCOSYS_DATA")
-    if env:
-        return Path(env).expanduser().resolve()
+# ---------------------------------------------------------------- where the files are
+# A data folder holds sample_manifest.csv, slide_manifest.csv and raw/. A *release* folder (built by the
+# challenge's make_release.py, e.g. data/tcga-brca/releases/practice-B) holds only changed raw files at its top
+# level, plus CHANGES.json. With a release, each file the release has is read from it; everything else (the
+# manifests, unchanged layers) comes from the data folder. Choose one with ONCOSYS_RELEASE (a folder, or a
+# name under <data>/releases/), with `run_cohort.py --release`, in the app's sidebar, or by pointing
+# ONCOSYS_DATA (or `ddir`) at the release folder itself.
+
+def _challenge_default() -> Path:
     return Path(__file__).resolve().parents[2] / "oncosys-hackathon-challenge" / "data" / "tcga-brca"
+
+
+def _configured_base() -> Path:
+    env = os.environ.get("ONCOSYS_DATA")
+    return Path(env).expanduser().resolve() if env else _challenge_default()
+
+
+def _is_release(d: Path) -> bool:
+    return not (d / BASE_FILE).exists() and any((d / Path(t["file"]).name).exists() for t in TABLES.values())
+
+
+def _split(d: Path) -> tuple[Path, Path | None]:
+    """(data folder, release folder or None) for a location."""
+    if not _is_release(d):
+        return d, None
+    for parent in d.parents:
+        if (parent / BASE_FILE).exists():
+            return parent, d
+    base = _configured_base()
+    return (base if (base / BASE_FILE).exists() else _challenge_default()), d
+
+
+def location(ddir: str | Path | None = None) -> Path:
+    """The folder data is read from: a data folder, or a release folder of changed raw files."""
+    if ddir:
+        return Path(ddir).expanduser().resolve()
+    base = _configured_base()
+    rel = os.environ.get("ONCOSYS_RELEASE", "").strip()
+    if rel:
+        r = Path(rel).expanduser()
+        if not r.exists():
+            r = _split(base)[0] / "releases" / rel
+        return r.resolve()
+    return base
+
+
+def data_dir(ddir: str | Path | None = None) -> Path:
+    return _split(location(ddir))[0]
+
+
+def release_dir(ddir: str | Path | None = None) -> Path | None:
+    return _split(location(ddir))[1]
+
+
+def available_releases(ddir: str | Path | None = None) -> list[str]:
+    folder = data_dir(ddir) / "releases"
+    return sorted(p.name for p in folder.iterdir() if p.is_dir() and _is_release(p)) if folder.exists() else []
+
+
+def file_path(rel: str, ddir: str | Path | None = None) -> Path:
+    """Where to read `rel` (e.g. "raw/clinical.tsv"): the release's copy if it has one, else the data folder's."""
+    base, release = _split(location(ddir))
+    if release is not None and (release / Path(rel).name).exists():
+        return release / Path(rel).name
+    return base / rel
 
 
 def _sha256(path: Path) -> str:
@@ -63,18 +123,22 @@ def _sha256(path: Path) -> str:
 
 @functools.lru_cache(maxsize=None)
 def check_data(ddir: str | None = None) -> dict[str, str]:
-    """Status of every file Cohort Studio reads: 'ok', 'missing' or 'CHANGED'."""
-    d = Path(ddir) if ddir else data_dir()
+    """Status of every file Cohort Studio reads: 'ok', 'missing', 'CHANGED' (differs from the frozen
+    checksum) or 'release' (read from the chosen release folder, which is meant to differ)."""
+    d = data_dir(ddir)
+    release = release_dir(ddir)
     status = {}
     frozen = {}
     src = d / "sources.csv"
     if src.exists():
         frozen = {r["file"]: r["sha256"] for r in csv.DictReader(open(src, encoding="utf-8"))}
     for rel in [BASE_FILE] + [t["file"] for t in TABLES.values()]:
-        p = d / rel
+        p = file_path(rel, ddir)
         name = Path(rel).name
         if not p.exists():
             status[rel] = "missing"
+        elif release is not None and p.parent == release:
+            status[rel] = "release"
         elif name in frozen and _sha256(p) != frozen[name]:
             status[rel] = "CHANGED"
         else:
@@ -83,10 +147,9 @@ def check_data(ddir: str | None = None) -> dict[str, str]:
 
 
 def file_fingerprints(ddir: str | None = None) -> dict[str, str]:
-    d = Path(ddir) if ddir else data_dir()
     out = {}
     for rel in [BASE_FILE] + [t["file"] for t in TABLES.values()]:
-        p = d / rel
+        p = file_path(rel, ddir)
         if p.exists():
             out[rel] = _sha256(p)
     return out
@@ -94,12 +157,11 @@ def file_fingerprints(ddir: str | None = None) -> dict[str, str]:
 
 @functools.lru_cache(maxsize=None)
 def _load(name: str, ddir: str | None) -> pd.DataFrame:
-    d = Path(ddir) if ddir else data_dir()
     if name == "samples":
-        return pd.read_csv(d / BASE_FILE)
+        return pd.read_csv(file_path(BASE_FILE, ddir))
     if name not in TABLES:
         raise KeyError(name)
-    path = d / TABLES[name]["file"]
+    path = file_path(TABLES[name]["file"], ddir)
     if not path.exists():
         raise FileNotFoundError(
             f"{path} not found. Run `python data/tcga-brca/fetch.py` in the challenge repo, "
@@ -149,5 +211,6 @@ def _load(name: str, ddir: str | None) -> pd.DataFrame:
 
 
 def load(name: str, ddir: str | None = None) -> pd.DataFrame:
-    """Return a copy so callers can't mutate the cache."""
-    return _load(name, ddir).copy()
+    """Return a copy so callers can't mutate the cache. The cache key is the resolved location, so
+    switching release (ONCOSYS_RELEASE) never serves the old files."""
+    return _load(name, str(location(ddir))).copy()

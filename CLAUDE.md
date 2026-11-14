@@ -19,6 +19,9 @@ problems with one-click fixes, and exports `cohort_samples.csv` (one row per 15-
   mutated sample-gene; 791 sequenced samples = `has_mutation`), `slides` from
   `$ONCOSYS_DATA` or `../oncosys-hackathon-challenge/data/tcga-brca`. Gotcha: clinical.tsv's own `patient_id`
   is a 4-char suffix, so it's renamed `patient_suffix` and the real 12-char barcode is used.
+  Releases: `ONCOSYS_RELEASE` (folder or name under `<data>/releases/`), `run_cohort.py --release`, the sidebar
+  box, or ONCOSYS_DATA pointed at a release folder. `data.file_path()` picks the release's copy of a file if it
+  has one, else the original; sqlcheck reads the same paths. `tests/test_release.py`.
 - `cohort_studio/engine.py`: steps are JSON (`filter` / `join` with how inner|left|semi|anti / `collapse`).
   `run()` returns the final df plus per-step results with warnings (inflation, cross_sample, missing_values, any_vs_all, value_not_found, unsequenced_mutation,
   empty, multi_sample_patients, redacted) and fixes (each fix is a replacement step list). `eq`/`in`/`ne`/`not_in`

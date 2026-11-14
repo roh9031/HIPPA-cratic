@@ -21,18 +21,22 @@ from . import data
 def connect(ddir: str | None = None):
     import duckdb  # only needed for tests and the SQL console
 
-    d = (data.data_dir() if ddir is None else Path(ddir)).as_posix()
+    # Only *which* file to read comes from data.py (so a chosen release is used, see data.file_path); the
+    # reading itself is DuckDB's, independent of the engine's loaders.
+    f = {rel: data.file_path(rel, ddir).as_posix() for rel in
+         ("sample_manifest.csv", "slide_manifest.csv", "raw/survival.tsv", "raw/clinical.tsv",
+          "raw/mutation_gene_level.tsv.gz")}
     con = duckdb.connect()
-    con.sql(f"CREATE VIEW samples  AS SELECT * FROM read_csv('{d}/sample_manifest.csv')")
-    con.sql(f"CREATE VIEW slides   AS SELECT * FROM read_csv('{d}/slide_manifest.csv')")
+    con.sql(f"CREATE VIEW samples  AS SELECT * FROM read_csv({_lit(f['sample_manifest.csv'])})")
+    con.sql(f"CREATE VIEW slides   AS SELECT * FROM read_csv({_lit(f['slide_manifest.csv'])})")
     con.sql(f"CREATE VIEW survival AS SELECT sample AS sample_id, _PATIENT AS patient_id, * "
-            f"FROM read_csv('{d}/raw/survival.tsv', delim='\t')")
+            f"FROM read_csv({_lit(f['raw/survival.tsv'])}, delim='\t')")
     # clinical.tsv's own patient_id is a 4-char suffix; the real key is the sample barcode.
     con.sql(f"CREATE VIEW clinical AS SELECT sampleID AS sample_id, left(sampleID, 12) AS patient_id, "
-            f"* EXCLUDE (patient_id) FROM read_csv('{d}/raw/clinical.tsv', delim='\t', all_varchar=true)")
-    mutation_path = _lit(f"{d}/raw/mutation_gene_level.tsv.gz")
-    with gzip.open(Path(d) / "raw" / "mutation_gene_level.tsv.gz", "rt", encoding="utf-8", newline="") as f:
-        mutation_header = next(csv.reader(f, delimiter="\t"), None)
+            f"* EXCLUDE (patient_id) FROM read_csv({_lit(f['raw/clinical.tsv'])}, delim='\t', all_varchar=true)")
+    mutation_path = _lit(f["raw/mutation_gene_level.tsv.gz"])
+    with gzip.open(f["raw/mutation_gene_level.tsv.gz"], "rt", encoding="utf-8", newline="") as fh:
+        mutation_header = next(csv.reader(fh, delimiter="\t"), None)
     if not mutation_header or mutation_header[0] != "sample":
         raise ValueError("mutation_gene_level.tsv.gz must have a first column named 'sample'.")
     sample_columns = mutation_header[1:]

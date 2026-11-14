@@ -58,16 +58,30 @@ python run_cohort.py examples/demo_diagnostic_slides.json --verify --why TCGA-E2
 python run_cohort.py examples/demo_diagnostic_slides.json --makeup   # did a step change who's in the cohort?
 python run_cohort.py --ask "ER-positive primary tumors with a diagnostic slide"   # AI draft: ANTHROPIC_API_KEY or NVIDIA_API_KEY (in the app: paste either key in the sidebar)
 python scripts/sql.py                                        # DuckDB SQL console over the raw files
-pytest -q                                                    # 158 tests, see below
+python run_cohort.py examples/demo_diagnostic_slides.json --release practice-B --verify   # on a changed data release
+pytest -q                                                    # 162 tests, see below
 ```
 `run_cohort.py` exits with code 2 if the cohort still has duplicates or cross-sample links, and 3 if `--verify` finds
 the SQL version disagrees. **The demo example is the careless version on purpose**, so the command above prints
 `UNRESOLVED` and exits 2: that's the tool catching the inflated join. Its output files (`cohort_samples.csv`,
 `cohort.sql`) go in the current folder.
 
-`pytest -q` runs 158 tests, all passing (known gaps are listed in [docs/GAPS.md](docs/GAPS.md)): the demo numbers, **31 cohort requests checked against independent DuckDB SQL
+`pytest -q` runs 162 tests, all passing (known gaps are listed in [docs/GAPS.md](docs/GAPS.md)): the demo numbers, **31 cohort requests checked against independent DuckDB SQL
 answer keys** (`tests/test_answer_key.py`, queries in [docs/TRAP_LOG.md](docs/TRAP_LOG.md)), the SQL check and
 sample trace (`tests/test_verify.py`), the exported rebuild script, the recommended-fix and version-compare logic, and the app itself (`tests/test_app.py`).
+
+### A changed data release (an additional dataset)
+A release is a folder of changed raw files, like the ones the challenge's `make_release.py` builds
+(`python data/tcga-brca/make_release.py` in the challenge repo makes `data/tcga-brca/releases/practice-B`). To run on one:
+- **App:** pick it in the sidebar's **Data release** box (shown when `releases/` has any), or start the app with
+  `ONCOSYS_RELEASE` set to the release's folder or name (PowerShell: `$env:ONCOSYS_RELEASE="practice-B"`; cmd:
+  `set ONCOSYS_RELEASE=practice-B`; macOS/Linux: `export ONCOSYS_RELEASE=practice-B`).
+- **Command line:** `--release <folder or name>`.
+- Or point `ONCOSYS_DATA` straight at the release folder.
+
+Files the release contains are read from it (marked 🔁 in the sidebar); the rest, including the sample and slide
+manifests, come from the original data. Verify with SQL reads the same release files, and `cohort.json` records
+which release was used. `tests/test_release.py` checks that changed records change the cohort and that SQL agrees.
 
 ## The demo
 Request: *primary tumors with both RNA and protein data and a diagnostic slide*.

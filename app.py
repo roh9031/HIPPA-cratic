@@ -58,13 +58,39 @@ def draft_with_ai():
 with st.sidebar:
     st.header("Data")
     st.caption(f"`{data.data_dir()}`")
-    status = data.check_data(str(data.data_dir()))
+    # A changed data release (the challenge's make_release.py, or one the organizers hand out) is a folder of
+    # changed raw files. Pick it here, or start the app with ONCOSYS_RELEASE set (see README).
+    releases = data.available_releases()
+    current = data.release_dir()
+    if releases or current:
+        options = ["Frozen release (original files)"] + releases
+        if current and current.name not in releases:
+            options.append(str(current))
+        pick = st.selectbox("Data release", options,
+                            index=options.index(current.name if current and current.name in releases
+                                                else str(current)) if current else 0,
+                            help="A release folder holds changed raw files; everything it doesn't contain "
+                                 "comes from the original data. Counts can differ from the frozen release.")
+        wanted = None if pick == options[0] else pick
+        if wanted != (None if not current else (current.name if current.name in releases else str(current))):
+            if wanted:
+                os.environ["ONCOSYS_RELEASE"] = wanted
+            else:
+                os.environ.pop("ONCOSYS_RELEASE", None)
+            st.cache_data.clear()
+            st.rerun()
+    status = data.check_data(str(data.location()))
     for f, s in status.items():
-        icon = {"ok": "✅", "missing": "❌", "CHANGED": "⚠️"}[s]
-        st.write(f"{icon} {f} — {s}")
-    if any(s != "ok" for s in status.values()):
-        st.error("Run `python data/tcga-brca/fetch.py` in the challenge repo, or set ONCOSYS_DATA. "
-                 "A CHANGED file doesn't match the event's frozen checksum: don't use it for judged results.")
+        icon = {"ok": "✅", "missing": "❌", "CHANGED": "⚠️", "release": "🔁"}[s]
+        st.write(f"{icon} {f} — {'from release ' + current.name if s == 'release' else s}")
+    if current:
+        st.info(f"Using release **{current.name}**: files marked 🔁 come from it, the rest from the original "
+                "data. Every count, check and export below uses these files.")
+    if any(s == "missing" for s in status.values()):
+        st.error("Run `python data/tcga-brca/fetch.py` in the challenge repo, or set ONCOSYS_DATA.")
+    if any(s == "CHANGED" for s in status.values()):
+        st.warning("A file marked ⚠️ differs from the event's frozen checksum. If it's a changed release, put "
+                   "it in its own folder and choose it above, so it's recorded with the results.")
     st.header("AI drafting (optional)")
     st.text_input("API key (Claude or NVIDIA)", type="password", key="api_key",
                   help="A Claude key, or an NVIDIA key starting with nvapi- (detected automatically). "

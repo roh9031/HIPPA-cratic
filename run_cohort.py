@@ -25,7 +25,13 @@ def main():
     ap.add_argument("--why", metavar="SAMPLE_ID", help="Explain which step removed this sample")
     ap.add_argument("--makeup", action="store_true",
                     help="Compare site / PAM50 / ER / age mix before and after each step")
+    ap.add_argument("--release", metavar="FOLDER_OR_NAME",
+                    help="Use a changed data release (a folder of changed raw files, or a name under "
+                         "data/tcga-brca/releases/, e.g. practice-B)")
     a = ap.parse_args()
+    if a.release:
+        import os
+        os.environ["ONCOSYS_RELEASE"] = a.release
     # Labels use →, ≠, ≥. Windows consoles and redirected output default to cp1252, which can't print them.
     for stream in (sys.stdout, sys.stderr):
         try:
@@ -50,6 +56,9 @@ def main():
     else:
         ap.error("give a definition file or --ask")
 
+    from cohort_studio import data
+    if data.release_dir():
+        print(f"Data release: {data.release_dir()} (files it doesn't contain come from {data.data_dir()})")
     df, results = run(steps)
     if request:
         print(f"Request: {request}")

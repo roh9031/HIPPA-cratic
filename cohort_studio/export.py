@@ -25,6 +25,7 @@ def cohort_definition(steps, request: str, results) -> dict:
         "created": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"),
         "request": request,
         "data_dir": str(data.data_dir()),
+        "release": str(data.release_dir()) if data.release_dir() else None,   # changed raw files, if any
         "input_sha256": data.file_fingerprints(),
         "steps": steps,
         "funnel": [{"step": r.index, "label": r.label, "rows": r.rows, "samples": r.samples,
