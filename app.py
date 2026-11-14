@@ -264,8 +264,8 @@ if earlier:
 
 st.warning("**Human review required.** A person should confirm the steps match the research question before "
            "this cohort is used. **Limitation:** layer membership (`has_*`) comes from the sample manifest. "
-           "This tool doesn't check the quality of values inside each layer, and it only joins the clinical, "
-           "survival and slide tables.")
+           "This tool doesn't check the quality of values inside each layer. It joins the clinical, survival, "
+           "slide and gene-level mutation tables; RNA, protein and copy-number values can't be filtered on.")
 
 
 @st.cache_data(show_spinner=False)
