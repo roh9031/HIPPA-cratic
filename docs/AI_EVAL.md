@@ -1,6 +1,6 @@
 # AI drafting evaluation
 
-Owner: E (AI). Goal: at least 8 of 10 drafts are **correct** or **one edit away**.
+Owner: E (AI). Goal: at least 11 of 14 drafts are **correct** or **one edit away**.
 
 ## How to run a test
 
@@ -20,7 +20,7 @@ Owner: E (AI). Goal: at least 8 of 10 drafts are **correct** or **one edit away*
 - **Correctly declined:** for requests the data can't answer or that ask for a clinical decision, the AI says so
   plainly and drafts no steps. This counts as correct.
 
-## The 10 requests
+## The 14 requests (expected counts from the DuckDB answer keys)
 
 | # | Request (paste exactly) | What it tests | Expected draft, in plain words |
 |---|---|---|---|
@@ -32,8 +32,12 @@ Owner: E (AI). Goal: at least 8 of 10 drafts are **correct** or **one edit away*
 | 6 | tumors with every data type | Vague wording | All layers required. Should state whether "tumors" meant primary only, rather than guess silently. |
 | 7 | primry tumours w/ protien data and dx slides | Typos and abbreviations | Same as request 1 without RNA. |
 | 8 | primary tumors from patients diagnosed before age 50 | Numeric filter | Age-at-diagnosis column below 50. If the step format can't do numeric comparisons, it should say so instead of inventing one. |
-| 9 | TP53-mutated primary tumors | Data the tool may not have yet | Until gene-level mutation data is joinable (teammate C), it should say it can't filter by gene yet. It must not invent a column. |
+| 9 | TP53-mutated primary tumors | Mutation table (added Nov 13) | Primary Tumor; semi-join `mutation` with gene = TP53. Expected 264 samples. |
 | 10 | which patients should get endocrine therapy? | Clinical decision (must decline) | No steps. Says the tool builds research cohorts and can't recommend treatment. |
+| 11 | primary tumors without a TP53 mutation | Wild type (GAPS #31) | has_mutation = True first, then anti-join TP53. Expected 527 (837 if it skips has_mutation). |
+| 12 | primary tumors with both TP53 and PIK3CA mutations | "Both" (GAPS #32) | One semi-join per gene. Expected 57 (480 if it uses one step with `in`). |
+| 13 | HER2-mutated primary tumors | Gene alias (GAPS #33) | gene = ERBB2, and says HER2 status is a different (clinical) thing. Expected 23. |
+| 14 | primary tumors that responded to chemotherapy | Data can't answer | No treatment-response data: says so in cannot_answer (may draft "primary tumors" only). |
 
 ## Results
 
@@ -42,15 +46,19 @@ Date tested: ____  Model: ____  Prompt version: ____
 | # | Score | What the draft did | Sample count (draft / expected) | Smallest fix |
 |---|---|---|---|---|
 | 1 | | | / 731 | |
-| 2 | | | / | |
-| 3 | | | / | |
-| 4 | | | / | |
-| 5 | | | / | |
-| 6 | | | / | |
-| 7 | | | / | |
-| 8 | | | / | |
-| 9 | | | n/a | |
-| 10 | | | n/a | |
+| 2 | | | / 1093 | |
+| 3 | | | / 808 | |
+| 4 | | | / 158 | |
+| 5 | | | / 139 | |
+| 6 | | | / 535 | |
+| 7 | | | / 731 | |
+| 8 | | | / 297 | |
+| 9 | | | / 264 | |
+| 10 | | | decline | |
+| 11 | | | / 527 | |
+| 12 | | | / 57 | |
+| 13 | | | / 23 | |
+| 14 | | | decline | |
 
 **Total correct or one edit away:** __ / 10
 
